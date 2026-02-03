@@ -1,0 +1,21 @@
+node_modules/
+.env
+.DS_Store
+*.log
+dist/
+build/
+coverage/
+
+# Data directory exceptions
+data/db/*
+!data/db/.gitkeep
+data/storage/*
+!data/storage/.gitkeep
+data/vectors/*
+!data/vectors/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+
+# Editor
+.vscode/
+.idea/
