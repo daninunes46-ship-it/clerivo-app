@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 require('dotenv').config();
 
+const emailRoutes = require('./routes/emails');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -10,6 +12,9 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Routes API
+app.use('/api/emails', emailRoutes);
 
 // Route de base (Health Check)
 app.get('/', (req, res) => {
