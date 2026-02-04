@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Loader2 } from 'lucide-react';
 
 const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
   const initialFormState = {
@@ -14,6 +14,7 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
 
   const [formData, setFormData] = useState(initialFormState);
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -24,7 +25,7 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Validation simple
     const newErrors = {};
     if (!formData.firstName.trim()) newErrors.firstName = 'Requis';
@@ -35,13 +36,21 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
       return;
     }
 
-    // Envoi au parent
-    onAddContact(formData);
-    
-    // Reset et fermeture
-    setFormData(initialFormState);
-    setErrors({});
-    onClose();
+    try {
+      setSaving(true);
+      // Appel asynchrone au parent
+      await onAddContact(formData);
+      
+      // Reset et fermeture (uniquement si succès)
+      setFormData(initialFormState);
+      setErrors({});
+      onClose();
+    } catch (error) {
+      // L'erreur est déjà gérée dans ContactsPage
+      console.error('Erreur lors de la sauvegarde:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -65,7 +74,8 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
           <h2 className="text-lg font-bold text-zinc-900">Nouveau Contact</h2>
           <button 
             onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors"
+            disabled={saving}
+            className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors disabled:opacity-50"
           >
             <X size={20} />
           </button>
@@ -86,8 +96,9 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
                 name="firstName"
                 value={formData.firstName}
                 onChange={handleChange}
+                disabled={saving}
                 placeholder="Jean"
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm ${errors.firstName ? 'border-red-300 bg-red-50' : 'border-zinc-200'}`}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm disabled:opacity-50 ${errors.firstName ? 'border-red-300 bg-red-50' : 'border-zinc-200'}`}
               />
             </div>
             <div className="space-y-1.5">
@@ -97,8 +108,9 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
                 name="lastName"
                 value={formData.lastName}
                 onChange={handleChange}
+                disabled={saving}
                 placeholder="Dupont"
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm ${errors.lastName ? 'border-red-300 bg-red-50' : 'border-zinc-200'}`}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm disabled:opacity-50 ${errors.lastName ? 'border-red-300 bg-red-50' : 'border-zinc-200'}`}
               />
             </div>
           </div>
@@ -111,8 +123,9 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
               name="email"
               value={formData.email}
               onChange={handleChange}
+              disabled={saving}
               placeholder="jean.dupont@exemple.com"
-              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm disabled:opacity-50"
             />
           </div>
 
@@ -124,8 +137,9 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
               name="phone"
               value={formData.phone}
               onChange={handleChange}
+              disabled={saving}
               placeholder="+41 79 000 00 00"
-              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm disabled:opacity-50"
             />
           </div>
 
@@ -138,7 +152,8 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
                   name="type"
                   value={formData.type}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none bg-white"
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none bg-white disabled:opacity-50"
                 >
                   <option value="ACHETEUR">Acheteur</option>
                   <option value="VENDEUR">Vendeur</option>
@@ -158,7 +173,8 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
                   name="status"
                   value={formData.status}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none bg-white"
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none bg-white disabled:opacity-50"
                 >
                   <option value="actif">Actif</option>
                   <option value="attente">En Attente</option>
@@ -178,9 +194,10 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
               name="note"
               value={formData.note}
               onChange={handleChange}
+              disabled={saving}
               rows={4}
               placeholder="Contexte, besoins spécifiques..."
-              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm resize-none"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm resize-none disabled:opacity-50"
             />
           </div>
 
@@ -190,16 +207,27 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
         <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50 flex items-center justify-end gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/50 rounded-lg transition-colors"
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/50 rounded-lg transition-colors disabled:opacity-50"
           >
             Annuler
           </button>
           <button 
             onClick={handleSubmit}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors"
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Save size={16} />
-            Enregistrer
+            {saving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Sauvegarde...
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                Enregistrer
+              </>
+            )}
           </button>
         </div>
       </div>

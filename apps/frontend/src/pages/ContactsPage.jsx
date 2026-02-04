@@ -1,19 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import BentoCard from '../components/ui/BentoCard';
 import AddContactPanel from './AddContactPanel';
 import ContactDetailPanel from './ContactDetailPanel';
-import { Search, Plus, MoreHorizontal, Phone, Mail } from 'lucide-react';
+import { Search, Plus, MoreHorizontal, Phone, Mail, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
-// Mock Data Initial
-const INITIAL_CONTACTS = [
-  { id: 1, firstName: 'Jean', lastName: 'Dupont', type: 'ACHETEUR', email: 'j.dupont@email.ch', phone: '+41 79 123 45 67', color: 'bg-indigo-100 text-indigo-700' },
-  { id: 2, firstName: 'Sophie', lastName: 'Martin', type: 'VENDEUR', email: 's.martin@bluewin.ch', phone: '+41 78 456 78 90', color: 'bg-emerald-100 text-emerald-700' },
-  { id: 3, firstName: 'Marc', lastName: 'Weber', type: 'INVESTISSEUR', email: 'm.weber@invest.ch', phone: '+41 21 333 44 55', color: 'bg-amber-100 text-amber-700' },
-  { id: 4, firstName: 'Isabelle', lastName: 'Rochat', type: 'ACHETEUR', email: 'isa.rochat@gmail.com', phone: '+41 76 999 88 77', color: 'bg-blue-100 text-blue-700' },
-  { id: 5, firstName: 'Pierre', lastName: 'Favre', type: 'VENDEUR', email: 'p.favre@architectes.ch', phone: '+41 79 555 22 11', color: 'bg-indigo-100 text-indigo-700' },
-  { id: 6, firstName: 'Claire', lastName: 'Dubois', type: 'ACHETEUR', email: 'c.dubois@yahoo.fr', phone: '+41 78 111 22 33', color: 'bg-rose-100 text-rose-700' },
-];
+// VÉRIFICATION AU CHARGEMENT : Supabase est-il initialisé ?
+if (!supabase) {
+  alert('🚨 ERREUR CRITIQUE : Supabase n\'est pas initialisé !');
+  console.error('🚨 SUPABASE NON INITIALISÉ');
+}
 
+// Couleurs autorisées pour les avatars
 const ALLOWED_COLORS = [
   'bg-indigo-100 text-indigo-700',
   'bg-emerald-100 text-emerald-700',
@@ -23,7 +21,9 @@ const ALLOWED_COLORS = [
 ];
 
 const ContactRow = ({ contact, onClick }) => {
-  const initials = `${contact.firstName[0]}${contact.lastName[0]}`;
+  const initials = contact.firstName && contact.lastName 
+    ? `${contact.firstName[0]}${contact.lastName[0]}` 
+    : '??';
   
   const getBadgeStyle = (type) => {
     switch (type) {
@@ -40,12 +40,10 @@ const ContactRow = ({ contact, onClick }) => {
       className="group flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors cursor-pointer -mx-4 md:mx-0 md:rounded-xl"
     >
       <div className="flex items-center gap-4">
-        {/* Avatar */}
         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${contact.color}`}>
           {initials}
         </div>
         
-        {/* Info Principale */}
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-zinc-900 truncate">
@@ -64,7 +62,6 @@ const ContactRow = ({ contact, onClick }) => {
         </div>
       </div>
 
-      {/* Info Secondaire (Desktop) */}
       <div className="hidden md:flex items-center gap-6 text-sm text-zinc-500">
         <div className="flex items-center gap-2">
           <Phone size={14} />
@@ -75,7 +72,6 @@ const ContactRow = ({ contact, onClick }) => {
         </div>
       </div>
 
-      {/* Action Mobile (Chevron ou simple fleche) */}
       <div className="md:hidden text-zinc-300">
         <MoreHorizontal size={20} />
       </div>
@@ -84,39 +80,137 @@ const ContactRow = ({ contact, onClick }) => {
 };
 
 const ContactsPage = () => {
-  const [contacts, setContacts] = useState(INITIAL_CONTACTS);
+  // INITIALISATION : Liste VIDE (pas de Mock Data)
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddPanelOpen, setIsAddPanelOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
 
-  const handleAddContact = (formData) => {
-    const newContact = {
-      id: Math.max(...contacts.map(c => c.id)) + 1,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      type: formData.type,
-      email: formData.email,
-      phone: formData.phone,
-      // Couleur aléatoire maîtrisée (Palette officielle)
-      color: ALLOWED_COLORS[Math.floor(Math.random() * ALLOWED_COLORS.length)],
-    };
+  useEffect(() => {
+    console.log('🔍 VERIFICATION : Chargement des contacts depuis Supabase...');
+    fetchContacts();
+  }, []);
 
-    setContacts(prev => [newContact, ...prev]); // Ajout en haut de liste
-    console.log("Nouveau contact ajouté :", newContact);
-    // Ici on pourrait ajouter un Toast de succès
+  const fetchContacts = async () => {
+    try {
+      console.log('🔗 CONNEXION À SUPABASE...');
+      setLoading(true);
+      setError(null);
+      
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ ERREUR SUPABASE CHARGEMENT:', error);
+        alert(`🚨 ERREUR CRITIQUE SUPABASE (CHARGEMENT): ${error.message}`);
+        throw error;
+      }
+
+      console.log('📥 DONNÉES REÇUES DE SUPABASE:', data);
+      console.log(`📊 NOMBRE DE CONTACTS: ${data.length}`);
+
+      const contactsTransformed = data.map(contact => {
+        const nameParts = contact.name ? contact.name.split(' ') : ['', ''];
+        return {
+          ...contact,
+          firstName: nameParts[0] || '',
+          lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
+          color: contact.color || ALLOWED_COLORS[Math.floor(Math.random() * ALLOWED_COLORS.length)]
+        };
+      });
+
+      setContacts(contactsTransformed);
+      console.log('✅ Contacts chargés avec succès');
+    } catch (error) {
+      console.error('❌ ÉCHEC CHARGEMENT:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddContact = async (formData) => {
+    console.log('🚀 DÉBUT AJOUT CONTACT VIA SUPABASE');
+    console.log('📝 Formulaire reçu:', formData);
+    
+    try {
+      const contactToSave = {
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        company: formData.company || null,
+        status: formData.status || 'actif',
+        type: formData.type || 'ACHETEUR',
+        color: ALLOWED_COLORS[Math.floor(Math.random() * ALLOWED_COLORS.length)],
+      };
+
+      console.log('📤 OBJET À ENVOYER (SANS ID):', contactToSave);
+      console.log('🔗 APPEL SUPABASE .insert()...');
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([contactToSave])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌❌❌ ERREUR SUPABASE INSERT ❌❌❌');
+        console.error('Code:', error.code);
+        console.error('Message:', error.message);
+        console.error('Détails:', error.details);
+        alert(`🚨 ERREUR CRITIQUE SUPABASE (INSERT): ${error.message}`);
+        throw error;
+      }
+
+      if (!data || !data.id) {
+        console.error('❌ SUPABASE N\'A PAS RENVOYÉ DE DATA');
+        alert('🚨 ERREUR CRITIQUE: Pas d\'ID retourné');
+        throw new Error('Pas d\'ID retourné par Supabase');
+      }
+
+      console.log('🆔🆔🆔 ID RETOURNÉ:', data.id);
+      console.log('🆔 TYPE:', typeof data.id);
+      console.log('📦 DATA COMPLÈTE:', data);
+
+      const isUUID = typeof data.id === 'string' && data.id.length > 10 && data.id.includes('-');
+      
+      if (isUUID) {
+        console.log('✅✅✅ C\'EST UN UUID !');
+      } else {
+        console.error('⚠️⚠️⚠️ CE N\'EST PAS UN UUID ! C\'EST:', data.id);
+        alert(`⚠️ ATTENTION: L'ID n'est pas un UUID, c'est: ${data.id}`);
+      }
+
+      const enrichedContact = {
+        ...data,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+      };
+      
+      setContacts(prev => [enrichedContact, ...prev]);
+      console.log('✅ Contact ajouté localement');
+      
+      alert(`✅ Contact créé avec ID: ${data.id}`);
+    } catch (error) {
+      console.error('❌ ÉCHEC GLOBAL:', error);
+      alert(`❌ ÉCHEC: ${error.message}`);
+      throw error;
+    }
   };
 
   const filteredContacts = contacts.filter(c => 
-    c.lastName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.firstName.toLowerCase().includes(searchTerm.toLowerCase())
+    c.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    c.firstName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="space-y-6 font-sans">
       
-      {/* En-tête de contrôle */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Barre de recherche */}
         <div className="relative w-full md:w-96">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search size={18} className="text-zinc-400" />
@@ -130,7 +224,6 @@ const ContactsPage = () => {
           />
         </div>
 
-        {/* Bouton Ajouter */}
         <button 
           onClick={() => setIsAddPanelOpen(true)}
           className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold transition-colors shadow-sm shadow-indigo-200"
@@ -140,33 +233,46 @@ const ContactsPage = () => {
         </button>
       </div>
 
-      {/* Slide-Over Add Panel */}
       <AddContactPanel 
         isOpen={isAddPanelOpen} 
         onClose={() => setIsAddPanelOpen(false)} 
         onAddContact={handleAddContact}
       />
 
-      {/* Slide-Over Detail Panel */}
       <ContactDetailPanel
         contact={selectedContact}
         isOpen={!!selectedContact}
         onClose={() => setSelectedContact(null)}
       />
 
-      {/* Liste des contacts */}
       <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
           <h3 className="font-semibold text-zinc-900">Tous les contacts</h3>
           <span className="text-xs font-medium text-zinc-500 bg-white px-2 py-1 rounded-md border border-zinc-200">
-            {filteredContacts.length} total
+            {loading ? '...' : `${filteredContacts.length} total`}
           </span>
         </div>
         
         <div className="divide-y divide-zinc-100">
-          {filteredContacts.length > 0 ? (
+          {loading ? (
+            <div className="p-12 flex flex-col items-center justify-center text-center">
+              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+              <p className="text-zinc-500 font-medium">Chargement depuis Supabase...</p>
+            </div>
+          ) : error ? (
+            <div className="p-12 text-center">
+              <p className="text-red-600 font-medium mb-2">❌ Erreur Supabase</p>
+              <p className="text-zinc-500 text-sm mb-4">{error}</p>
+              <button 
+                onClick={fetchContacts}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Réessayer
+              </button>
+            </div>
+          ) : filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
-              <div key={contact.id} className="px-4 md:px-2"> {/* Wrapper pour padding mobile */}
+              <div key={contact.id} className="px-4 md:px-2">
                 <ContactRow 
                   contact={contact} 
                   onClick={() => setSelectedContact(contact)}
@@ -175,7 +281,7 @@ const ContactsPage = () => {
             ))
           ) : (
             <div className="p-8 text-center text-zinc-500">
-              Aucun contact trouvé pour "{searchTerm}"
+              {searchTerm ? `Aucun contact trouvé pour "${searchTerm}"` : 'Aucun contact dans Supabase. Ajoutez-en un !'}
             </div>
           )}
         </div>
