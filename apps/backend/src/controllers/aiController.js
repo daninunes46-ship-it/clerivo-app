@@ -1,19 +1,29 @@
-const openaiService = require('../services/openaiService');
+const aiAnalysisService = require('../services/aiAnalysisService');
+const { generateDraft } = require('../services/openaiService');
 
-const createDraft = async (req, res) => {
+exports.createDraft = async (req, res) => {
   try {
     const { incomingEmailBody, senderName } = req.body;
-
-    if (!incomingEmailBody) {
-      return res.status(400).json({ error: "Le corps de l'email est requis." });
-    }
-
-    const draft = await openaiService.generateDraft(incomingEmailBody, senderName);
+    const draft = await generateDraft(incomingEmailBody, senderName);
     res.json(draft);
   } catch (error) {
-    console.error("Erreur contrôleur AI:", error);
-    res.status(500).json({ error: "Erreur lors de la génération du brouillon." });
+    res.status(500).json({ error: error.message });
   }
 };
 
-module.exports = { createDraft };
+exports.analyzeEmailFull = async (req, res) => {
+  try {
+    const { id, body, sender, subject } = req.body;
+    
+    if (!id) {
+      return res.status(400).json({ error: "Email ID is required" });
+    }
+
+    const analysis = await aiAnalysisService.analyzeEmail(id, body, sender, subject);
+    res.json({ success: true, data: analysis });
+
+  } catch (error) {
+    console.error("Controller Error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};

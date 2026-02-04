@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle, Send, X, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-
 import DOMPurify from 'dompurify';
+
+import EmailAnalysisCard from '../components/EmailAnalysisCard';
+import SmartBadge from '../components/SmartBadge';
 
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);
@@ -10,6 +12,10 @@ const InboxPage = () => {
   const [error, setError] = useState(null);
   const [selectedEmailId, setSelectedEmailId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // États pour l'analyse IA
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   // États pour la réponse
   const [isReplying, setIsReplying] = useState(false);
@@ -21,10 +27,10 @@ const InboxPage = () => {
     fetchEmails();
   }, []);
 
+
   const fetchEmails = async () => {
     try {
       setLoading(true);
-      // Note: En dev, assurez-vous que le backend tourne sur le port 3000
       const response = await fetch('http://localhost:3000/api/emails');
       
       if (!response.ok) {
@@ -40,12 +46,12 @@ const InboxPage = () => {
            email: email.from ? email.from.address : '',
            subject: email.subject,
            preview: email.snippet,
-           // Formatage date simple
            date: new Date(email.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
            unread: email.unread,
            body: email.text || 'Contenu non disponible en format texte.',
            html: email.html,
-           color: getColorForSender(email.from ? (email.from.name || email.from.address) : '')
+           color: getColorForSender(email.from ? (email.from.name || email.from.address) : ''),
+           ai: email.ai // Récupération des métadonnées IA si existantes
         }));
         setEmails(formattedEmails);
       } else {
@@ -58,6 +64,52 @@ const InboxPage = () => {
       setLoading(false);
     }
   };
+
+  const handleSelectEmail = (id) => {
+    setSelectedEmailId(id);
+    setIsReplying(false);
+    setReplyBody('');
+    setAnalysis(null);
+
+    const email = emails.find(e => e.id === id);
+    if (!email) return;
+
+    // Si l'analyse existe déjà dans la liste (cache), on l'utilise
+    if (email.ai) {
+        setAnalysis(email.ai);
+    } else {
+        // Sinon, on lance l'analyse (non-bloquant)
+        triggerAnalysis(id, email);
+    }
+  };
+
+  const triggerAnalysis = async (id, email) => {
+      setAnalyzing(true);
+      try {
+          const response = await fetch('http://localhost:3000/api/ai/analyze-full', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  id: id,
+                  body: email.body,
+                  sender: email.from,
+                  subject: email.subject
+              })
+          });
+          
+          const data = await response.json();
+          if (data.success) {
+              setAnalysis(data.data);
+              // Mise à jour optimiste de la liste pour afficher les badges
+              setEmails(prev => prev.map(e => e.id === id ? { ...e, ai: data.data } : e));
+          }
+      } catch (err) {
+          console.error("Erreur analyse IA:", err);
+      } finally {
+          setAnalyzing(false);
+      }
+  };
+
 
   const getColorForSender = (name) => {
     const colors = [
@@ -84,14 +136,11 @@ const InboxPage = () => {
     try {
         const response = await fetch('http://localhost:3000/api/emails/send', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 to: selectedEmail.email,
                 subject: `Re: ${selectedEmail.subject}`,
                 text: replyBody,
-                // On pourrait ajouter une signature HTML ici si besoin
             })
         });
 
@@ -100,7 +149,6 @@ const InboxPage = () => {
         if (data.success) {
             setReplyBody('');
             setIsReplying(false);
-            // Optionnel : Notification de succès
             toast.success("Email envoyé avec succès !");
         } else {
             toast.error("Erreur lors de l'envoi : " + data.message);
@@ -122,9 +170,7 @@ const InboxPage = () => {
     try {
       const response = await fetch('http://localhost:3000/api/ai/draft', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           incomingEmailBody: selectedEmail.body,
           senderName: selectedEmail.from
@@ -209,11 +255,7 @@ const InboxPage = () => {
             filteredEmails.map((email) => (
                 <div 
                 key={email.id}
-                onClick={() => {
-                    setSelectedEmailId(email.id);
-                    setIsReplying(false); // Reset reply mode on switch
-                    setReplyBody('');
-                }}
+                onClick={() => handleSelectEmail(email.id)}
                 className={`p-4 border-b border-zinc-100 cursor-pointer transition-colors hover:bg-zinc-50 ${selectedEmailId === email.id ? 'bg-indigo-50/50 border-l-4 border-l-indigo-600' : 'border-l-4 border-l-transparent'}`}
                 >
                 <div className="flex justify-between items-start mb-1">
@@ -232,9 +274,19 @@ const InboxPage = () => {
                     {email.subject}
                 </h4>
                 
-                <p className="text-xs text-zinc-400 line-clamp-2">
+                <p className="text-xs text-zinc-400 line-clamp-2 mb-2">
                     {email.preview}
                 </p>
+                
+                {/* Smart Badges if AI data is available */}
+                {email.ai && email.ai.classification && (
+                  <div className="flex gap-1.5 mt-1">
+                    <SmartBadge type="category" value={email.ai.classification.category} compact />
+                    {email.ai.classification.priority === 'Haute' && (
+                      <SmartBadge type="priority" value="Haute" compact />
+                    )}
+                  </div>
+                )}
                 </div>
             ))
           )}
@@ -273,6 +325,10 @@ const InboxPage = () => {
 
             {/* Email Body Scrollable */}
             <div className="flex-1 overflow-y-auto p-6 md:p-10">
+              
+              {/* NEURAL INBOX: AI ANALYSIS CARD */}
+              <EmailAnalysisCard analysis={analysis} loading={analyzing} />
+
               {/* Subject & Meta */}
               <div className="mb-8">
                 <h1 className="text-2xl font-bold text-zinc-900 mb-6 leading-tight">

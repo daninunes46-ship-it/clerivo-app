@@ -1,6 +1,7 @@
 const imap = require('imap-simple');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
+const aiAnalysisService = require('../services/aiAnalysisService');
 
 const config = {
   imap: {
@@ -46,6 +47,9 @@ exports.getEmails = async (req, res) => {
     
     // On prend les 20 derniers et on inverse pour avoir les plus récents en premier
     const messagesToProcess = allMessages.slice(-20).reverse(); 
+    
+    // Load local AI metadata cache once
+    const aiMetadata = aiAnalysisService.loadMetadata();
 
     const emails = [];
 
@@ -58,6 +62,9 @@ exports.getEmails = async (req, res) => {
         try {
             const parsed = await simpleParser(all.body);
             
+            // Check for existing AI analysis
+            const analysis = aiMetadata[id] || null;
+
             emails.push({
                 id: id,
                 seq: seq,
@@ -69,7 +76,9 @@ exports.getEmails = async (req, res) => {
                 text: parsed.text, // Contenu texte complet pour l'affichage détail
                 html: parsed.html, // Contenu HTML complet pour l'affichage riche (si dispo)
                 unread: !flags.includes('\\Seen'),
-                hasAttachments: parsed.attachments && parsed.attachments.length > 0
+                hasAttachments: parsed.attachments && parsed.attachments.length > 0,
+                // Attach AI Data if available
+                ai: analysis
             });
         } catch (err) {
             console.error(`Erreur parsing email UID ${id}:`, err.message);
