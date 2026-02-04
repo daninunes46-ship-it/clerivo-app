@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle } from 'lucide-react';
 
+import DOMPurify from 'dompurify';
+
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -209,9 +211,12 @@ const InboxPage = () => {
               </div>
 
               {/* Content */}
-              <div className="prose prose-zinc max-w-none text-sm text-zinc-700 whitespace-pre-line leading-relaxed">
-                {selectedEmail.body}
-              </div>
+              <div 
+                className="prose prose-zinc max-w-none text-sm text-zinc-700 leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_a]:text-indigo-600 [&_a]:underline"
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(selectedEmail.html || selectedEmail.body || '<i>Aucun contenu</i>')
+                }}
+              />
 
               {/* Attachments Mock - Dynamique à faire plus tard */}
               {/* <div className="mt-8 pt-6 border-t border-zinc-100">
