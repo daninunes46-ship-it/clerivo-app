@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle, Send, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 import DOMPurify from 'dompurify';
 
@@ -99,13 +100,13 @@ const InboxPage = () => {
             setReplyBody('');
             setIsReplying(false);
             // Optionnel : Notification de succès
-            alert("Email envoyé avec succès !");
+            toast.success("Email envoyé avec succès !");
         } else {
-            alert("Erreur lors de l'envoi : " + data.message);
+            toast.error("Erreur lors de l'envoi : " + data.message);
         }
     } catch (err) {
         console.error("Erreur envoi:", err);
-        alert("Erreur réseau lors de l'envoi.");
+        toast.error("Erreur réseau lors de l'envoi.");
     } finally {
         setSending(false);
     }

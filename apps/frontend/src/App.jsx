@@ -1,4 +1,5 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import Layout from './components/layout/Layout';
 import DashboardPage from './pages/DashboardPage';
 import InboxPage from './pages/InboxPage';
@@ -39,6 +40,7 @@ function App() {
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/contacts" element={<ContactsPage />} />
       </Routes>
+      <Toaster richColors position="top-right" closeButton />
     </Layout>
   )
 }
