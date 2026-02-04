@@ -7,8 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 
 // VÉRIFICATION AU CHARGEMENT : Supabase est-il initialisé ?
 if (!supabase) {
-  alert('🚨 ERREUR CRITIQUE : Supabase n\'est pas initialisé !');
-  console.error('🚨 SUPABASE NON INITIALISÉ');
+  console.error('⚠️ Supabase non initialisé');
 }
 
 // Couleurs autorisées pour les avatars
@@ -89,13 +88,11 @@ const ContactsPage = () => {
   const [selectedContact, setSelectedContact] = useState(null);
 
   useEffect(() => {
-    console.log('🔍 VERIFICATION : Chargement des contacts depuis Supabase...');
     fetchContacts();
   }, []);
 
-  const fetchContacts = async () => {
+  const fetchContacts = async (retryCount = 0) => {
     try {
-      console.log('🔗 CONNEXION À SUPABASE...');
       setLoading(true);
       setError(null);
       
@@ -105,13 +102,9 @@ const ContactsPage = () => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ ERREUR SUPABASE CHARGEMENT:', error);
-        alert(`🚨 ERREUR CRITIQUE SUPABASE (CHARGEMENT): ${error.message}`);
+        console.error('Erreur chargement contacts:', error);
         throw error;
       }
-
-      console.log('📥 DONNÉES REÇUES DE SUPABASE:', data);
-      console.log(`📊 NOMBRE DE CONTACTS: ${data.length}`);
 
       const contactsTransformed = data.map(contact => {
         const nameParts = contact.name ? contact.name.split(' ') : ['', ''];
@@ -124,19 +117,27 @@ const ContactsPage = () => {
       });
 
       setContacts(contactsTransformed);
-      console.log('✅ Contacts chargés avec succès');
-    } catch (error) {
-      console.error('❌ ÉCHEC CHARGEMENT:', error);
-      setError(error.message);
-    } finally {
       setLoading(false);
+    } catch (error) {
+      console.error('Échec chargement:', error);
+      
+      const isNetworkError = error.message?.includes('fetch') || error.message?.includes('network');
+      
+      // Gestion silencieuse du "réveil" de Supabase ou problèmes réseau transitoires
+      if (retryCount < 3) { // On augmente un peu la tolérance (3 essais)
+        console.log(`Tentative de reconnexion (${retryCount + 1}/3)...`);
+        // On ne change PAS l'état loading, l'utilisateur voit toujours le loader
+        setTimeout(() => fetchContacts(retryCount + 1), 2000);
+      } else {
+        setLoading(false);
+        // On affiche l'erreur de manière plus douce ou on log juste si c'est pas critique
+        // Ici on garde l'erreur mais on pourrait mettre un message plus rassurant
+        setError(isNetworkError ? 'Le serveur met un peu de temps à répondre. Veuillez rafraîchir.' : 'Erreur de chargement des contacts');
+      }
     }
   };
 
   const handleAddContact = async (formData) => {
-    console.log('🚀 DÉBUT AJOUT CONTACT VIA SUPABASE');
-    console.log('📝 Formulaire reçu:', formData);
-    
     try {
       const contactToSave = {
         name: `${formData.firstName} ${formData.lastName}`,
@@ -148,9 +149,6 @@ const ContactsPage = () => {
         color: ALLOWED_COLORS[Math.floor(Math.random() * ALLOWED_COLORS.length)],
       };
 
-      console.log('📤 OBJET À ENVOYER (SANS ID):', contactToSave);
-      console.log('🔗 APPEL SUPABASE .insert()...');
-
       const { data, error } = await supabase
         .from('contacts')
         .insert([contactToSave])
@@ -158,31 +156,13 @@ const ContactsPage = () => {
         .single();
 
       if (error) {
-        console.error('❌❌❌ ERREUR SUPABASE INSERT ❌❌❌');
-        console.error('Code:', error.code);
-        console.error('Message:', error.message);
-        console.error('Détails:', error.details);
-        alert(`🚨 ERREUR CRITIQUE SUPABASE (INSERT): ${error.message}`);
-        throw error;
+        console.error('Erreur insertion contact:', error);
+        throw new Error('Impossible d\'enregistrer le contact');
       }
 
       if (!data || !data.id) {
-        console.error('❌ SUPABASE N\'A PAS RENVOYÉ DE DATA');
-        alert('🚨 ERREUR CRITIQUE: Pas d\'ID retourné');
-        throw new Error('Pas d\'ID retourné par Supabase');
-      }
-
-      console.log('🆔🆔🆔 ID RETOURNÉ:', data.id);
-      console.log('🆔 TYPE:', typeof data.id);
-      console.log('📦 DATA COMPLÈTE:', data);
-
-      const isUUID = typeof data.id === 'string' && data.id.length > 10 && data.id.includes('-');
-      
-      if (isUUID) {
-        console.log('✅✅✅ C\'EST UN UUID !');
-      } else {
-        console.error('⚠️⚠️⚠️ CE N\'EST PAS UN UUID ! C\'EST:', data.id);
-        alert(`⚠️ ATTENTION: L'ID n'est pas un UUID, c'est: ${data.id}`);
+        console.error('Aucune donnée retournée par Supabase');
+        throw new Error('Impossible d\'enregistrer le contact');
       }
 
       const enrichedContact = {
@@ -192,12 +172,11 @@ const ContactsPage = () => {
       };
       
       setContacts(prev => [enrichedContact, ...prev]);
-      console.log('✅ Contact ajouté localement');
       
-      alert(`✅ Contact créé avec ID: ${data.id}`);
+      // Succès silencieux : le panneau se ferme automatiquement dans AddContactPanel
     } catch (error) {
-      console.error('❌ ÉCHEC GLOBAL:', error);
-      alert(`❌ ÉCHEC: ${error.message}`);
+      console.error('Échec ajout contact:', error);
+      // Erreur silencieuse : le panneau reste ouvert, l'utilisateur peut réessayer
       throw error;
     }
   };
@@ -257,17 +236,20 @@ const ContactsPage = () => {
           {loading ? (
             <div className="p-12 flex flex-col items-center justify-center text-center">
               <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
-              <p className="text-zinc-500 font-medium">Chargement depuis Supabase...</p>
+              <p className="text-zinc-500 font-medium">Chargement...</p>
             </div>
           ) : error ? (
             <div className="p-12 text-center">
-              <p className="text-red-600 font-medium mb-2">❌ Erreur Supabase</p>
-              <p className="text-zinc-500 text-sm mb-4">{error}</p>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-100 mb-4">
+                <Loader2 className="w-6 h-6 text-zinc-400" />
+              </div>
+              <p className="text-zinc-900 font-medium mb-1">Connexion en cours...</p>
+              <p className="text-sm text-zinc-500 mb-4">{error}</p>
               <button 
-                onClick={fetchContacts}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                onClick={() => fetchContacts()}
+                className="px-4 py-2 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 transition-colors"
               >
-                Réessayer
+                Réactualiser
               </button>
             </div>
           ) : filteredContacts.length > 0 ? (
@@ -281,7 +263,7 @@ const ContactsPage = () => {
             ))
           ) : (
             <div className="p-8 text-center text-zinc-500">
-              {searchTerm ? `Aucun contact trouvé pour "${searchTerm}"` : 'Aucun contact dans Supabase. Ajoutez-en un !'}
+              {searchTerm ? `Aucun contact trouvé pour "${searchTerm}"` : 'Aucun contact. Ajoutez-en un !'}
             </div>
           )}
         </div>

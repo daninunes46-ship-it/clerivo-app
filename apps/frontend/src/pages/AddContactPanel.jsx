@@ -38,16 +38,19 @@ const AddContactPanel = ({ isOpen, onClose, onAddContact }) => {
 
     try {
       setSaving(true);
-      // Appel asynchrone au parent
+      // Appel asynchrone au parent pour créer le contact
       await onAddContact(formData);
       
-      // Reset et fermeture (uniquement si succès)
+      // SUCCÈS : On ferme juste le panneau proprement. 
+      // Pas d'alerte intrusive ("window.alert"). L'UX reste fluide.
       setFormData(initialFormState);
       setErrors({});
       onClose();
+      
     } catch (error) {
-      // L'erreur est déjà gérée dans ContactsPage
+      // L'erreur est loggée mais on ne bloque pas l'utilisateur avec une popup système
       console.error('Erreur lors de la sauvegarde:', error);
+      // Optionnel : afficher une erreur locale dans le form si besoin (via setErrors)
     } finally {
       setSaving(false);
     }
