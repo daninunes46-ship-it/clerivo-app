@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle, Send, X } from 'lucide-react';
 
 import DOMPurify from 'dompurify';
 
@@ -9,6 +9,11 @@ const InboxPage = () => {
   const [error, setError] = useState(null);
   const [selectedEmailId, setSelectedEmailId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // États pour la réponse
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     fetchEmails();
@@ -63,11 +68,47 @@ const InboxPage = () => {
     ];
     let hash = 0;
     if (name) {
-        for (let i = 0; i < name.length; i++) {
+      for (let i = 0; i < name.length; i++) {
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
-        }
+      }
     }
     return colors[Math.abs(hash) % colors.length];
+  };
+
+  const handleSendReply = async () => {
+    if (!replyBody.trim()) return;
+    
+    setSending(true);
+    try {
+        const response = await fetch('http://localhost:3000/api/emails/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                to: selectedEmail.email,
+                subject: `Re: ${selectedEmail.subject}`,
+                text: replyBody,
+                // On pourrait ajouter une signature HTML ici si besoin
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            setReplyBody('');
+            setIsReplying(false);
+            // Optionnel : Notification de succès
+            alert("Email envoyé avec succès !");
+        } else {
+            alert("Erreur lors de l'envoi : " + data.message);
+        }
+    } catch (err) {
+        console.error("Erreur envoi:", err);
+        alert("Erreur réseau lors de l'envoi.");
+    } finally {
+        setSending(false);
+    }
   };
 
   const selectedEmail = emails.find(e => e.id === selectedEmailId);
@@ -130,7 +171,11 @@ const InboxPage = () => {
             filteredEmails.map((email) => (
                 <div 
                 key={email.id}
-                onClick={() => setSelectedEmailId(email.id)}
+                onClick={() => {
+                    setSelectedEmailId(email.id);
+                    setIsReplying(false); // Reset reply mode on switch
+                    setReplyBody('');
+                }}
                 className={`p-4 border-b border-zinc-100 cursor-pointer transition-colors hover:bg-zinc-50 ${selectedEmailId === email.id ? 'bg-indigo-50/50 border-l-4 border-l-indigo-600' : 'border-l-4 border-l-transparent'}`}
                 >
                 <div className="flex justify-between items-start mb-1">
@@ -217,20 +262,67 @@ const InboxPage = () => {
                   __html: DOMPurify.sanitize(selectedEmail.html || selectedEmail.body || '<i>Aucun contenu</i>')
                 }}
               />
-
-              {/* Attachments Mock - Dynamique à faire plus tard */}
-              {/* <div className="mt-8 pt-6 border-t border-zinc-100">
-                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wide mb-3">Pièces jointes</h4>
-                ...
-              </div> */}
             </div>
 
-            {/* Reply Footer */}
+            {/* Reply Footer - Zone de réponse */}
             <div className="p-4 border-t border-zinc-100 bg-zinc-50/50">
-              <button className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-200 rounded-xl bg-white text-zinc-600 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-sm transition-all font-medium">
-                <Reply size={18} />
-                Répondre à {selectedEmail.from.split(' ')[0]}
-              </button>
+              {!isReplying ? (
+                <button 
+                  onClick={() => setIsReplying(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-200 rounded-xl bg-white text-zinc-600 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-sm transition-all font-medium"
+                >
+                  <Reply size={18} />
+                  Répondre à {selectedEmail.from.split(' ')[0]}
+                </button>
+              ) : (
+                <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4 animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Réponse à {selectedEmail.from}</span>
+                        <button onClick={() => setIsReplying(false)} className="text-zinc-400 hover:text-zinc-600">
+                            <X size={16} />
+                        </button>
+                    </div>
+                    
+                    <textarea 
+                        autoFocus
+                        value={replyBody}
+                        onChange={(e) => setReplyBody(e.target.value)}
+                        placeholder="Rédigez votre réponse..."
+                        className="w-full min-h-[120px] p-3 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 mb-3 resize-none"
+                    />
+                    
+                    <div className="flex justify-between items-center">
+                        <button className="text-zinc-400 hover:text-zinc-600 p-2 rounded-lg hover:bg-zinc-50">
+                            <Paperclip size={18} />
+                        </button>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => setIsReplying(false)}
+                                className="px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button 
+                                onClick={handleSendReply}
+                                disabled={!replyBody.trim() || sending}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {sending ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" />
+                                        Envoi...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send size={16} />
+                                        Envoyer
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+              )}
             </div>
           </>
         ) : (

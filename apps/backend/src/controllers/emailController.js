@@ -1,5 +1,6 @@
 const imap = require('imap-simple');
 const { simpleParser } = require('mailparser');
+const nodemailer = require('nodemailer');
 
 const config = {
   imap: {
@@ -12,6 +13,15 @@ const config = {
     authTimeout: 10000
   }
 };
+
+// Configuration du transporteur SMTP (Envoi)
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // Ou utilisez host/port si ce n'est pas Gmail
+    auth: {
+        user: process.env.IMAP_USER,
+        pass: process.env.IMAP_PASSWORD
+    }
+});
 
 exports.getEmails = async (req, res) => {
   let connection;
@@ -94,4 +104,42 @@ exports.getEmails = async (req, res) => {
       }
     }
   }
+};
+
+exports.sendEmail = async (req, res) => {
+    const { to, subject, text, html } = req.body;
+
+    if (!to || !subject || (!text && !html)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Champs manquants (to, subject, text/html)'
+        });
+    }
+
+    try {
+        const mailOptions = {
+            from: process.env.IMAP_USER,
+            to: to,
+            subject: subject,
+            text: text,
+            html: html
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email envoyé: %s', info.messageId);
+
+        res.json({
+            success: true,
+            message: 'Email envoyé avec succès',
+            messageId: info.messageId
+        });
+
+    } catch (error) {
+        console.error('Erreur lors de l\'envoi:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'envoi de l\'email',
+            error: error.message
+        });
+    }
 };
