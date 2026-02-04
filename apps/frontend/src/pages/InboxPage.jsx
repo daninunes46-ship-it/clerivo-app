@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle, Send, X } from 'lucide-react';
+import { Search, ArrowLeft, Star, Reply, MoreHorizontal, Paperclip, Mail as MailIcon, Loader2, AlertCircle, Send, X, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DOMPurify from 'dompurify';
@@ -15,6 +15,7 @@ const InboxPage = () => {
   const [isReplying, setIsReplying] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [isDrafting, setIsDrafting] = useState(false);
 
   useEffect(() => {
     fetchEmails();
@@ -109,6 +110,42 @@ const InboxPage = () => {
         toast.error("Erreur réseau lors de l'envoi.");
     } finally {
         setSending(false);
+    }
+  };
+
+  const handleSmartDraft = async () => {
+    if (!selectedEmail) return;
+
+    setIsDrafting(true);
+    const toastId = toast.loading("L'IA rédige votre réponse...");
+
+    try {
+      const response = await fetch('http://localhost:3000/api/ai/draft', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          incomingEmailBody: selectedEmail.body,
+          senderName: selectedEmail.from
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setReplyBody(data.body);
+        toast.dismiss(toastId);
+        toast.success("Brouillon généré par l'IA !");
+      } else {
+        throw new Error(data.error || "Erreur lors de la génération");
+      }
+    } catch (err) {
+      console.error("Erreur Smart Draft:", err);
+      toast.dismiss(toastId);
+      toast.error("Impossible de générer le brouillon : " + err.message);
+    } finally {
+      setIsDrafting(false);
     }
   };
 
@@ -268,20 +305,46 @@ const InboxPage = () => {
             {/* Reply Footer - Zone de réponse */}
             <div className="p-4 border-t border-zinc-100 bg-zinc-50/50">
               {!isReplying ? (
-                <button 
-                  onClick={() => setIsReplying(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-200 rounded-xl bg-white text-zinc-600 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-sm transition-all font-medium"
-                >
-                  <Reply size={18} />
-                  Répondre à {selectedEmail.from.split(' ')[0]}
-                </button>
+                <div className="flex flex-col gap-2">
+                   {/* Suggestion rapide */}
+                   <button 
+                    onClick={() => {
+                      setIsReplying(true);
+                      handleSmartDraft();
+                    }}
+                    disabled={isDrafting}
+                    className="w-full flex items-center justify-center gap-2 py-3 border border-indigo-100 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:shadow-sm transition-all font-medium mb-1"
+                  >
+                    <Sparkles size={18} className={isDrafting ? "animate-pulse" : ""} />
+                    {isDrafting ? "Rédaction en cours..." : "Générer une réponse IA (Brouillon)"}
+                  </button>
+
+                  <button 
+                    onClick={() => setIsReplying(true)}
+                    className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-200 rounded-xl bg-white text-zinc-600 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-sm transition-all font-medium"
+                  >
+                    <Reply size={18} />
+                    Répondre à {selectedEmail.from.split(' ')[0]}
+                  </button>
+                </div>
               ) : (
                 <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4 animate-in slide-in-from-bottom-2 duration-200">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Réponse à {selectedEmail.from}</span>
-                        <button onClick={() => setIsReplying(false)} className="text-zinc-400 hover:text-zinc-600">
-                            <X size={16} />
-                        </button>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={handleSmartDraft}
+                            disabled={isDrafting}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg hover:bg-indigo-100 transition-colors"
+                            title="Générer un nouveau brouillon"
+                          >
+                            <Sparkles size={14} className={isDrafting ? "animate-pulse" : ""} />
+                            {isDrafting ? "..." : "IA"}
+                          </button>
+                          <button onClick={() => setIsReplying(false)} className="text-zinc-400 hover:text-zinc-600">
+                              <X size={16} />
+                          </button>
+                        </div>
                     </div>
                     
                     <textarea 
