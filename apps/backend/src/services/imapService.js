@@ -9,7 +9,7 @@ const config = {
     password: process.env.IMAP_PASSWORD,
     host: process.env.IMAP_HOST || 'imap.gmail.com',
     port: process.env.IMAP_PORT || 993,
-    tls: process.env.IMAP_TLS === 'true',
+    tls: process.env.IMAP_TLS !== 'false', // Force TLS à true par défaut (Gmail exige TLS sur port 993)
     tlsOptions: { rejectUnauthorized: false },
     authTimeout: 10000
   }
@@ -89,10 +89,14 @@ async function fetchEmails(options = {}) {
   let connection;
   try {
     // 1. Connexion au serveur IMAP
+    console.log('📡 Tentative de connexion IMAP...');
     connection = await imap.connect(config);
+    console.log('✅ Connecté au serveur !');
     
     // 2. Ouverture de la boîte de réception
+    console.log('📂 Ouverture de la boite INBOX...');
     await connection.openBox('INBOX');
+    console.log('✅ INBOX ouverte, recherche des messages...');
 
     // 3. Recherche et récupération des messages
     const fetchOptions = {

@@ -208,49 +208,31 @@ const InboxPage = () => {
 
   if (loading) {
       return (
-          <>
-            {/* 🟨 DEBUG: Affichage de l'API_URL */}
-            <div className="bg-yellow-200 border border-yellow-400 p-3 mb-4 rounded-lg text-sm font-mono">
-              <strong>🔍 DEBUG API_URL:</strong> {API_URL}
-            </div>
-            <div className="h-[calc(100vh-140px)] flex items-center justify-center bg-white rounded-2xl border border-zinc-200 font-sans">
-                <div className="flex flex-col items-center gap-3 text-zinc-500">
-                    <Loader2 className="animate-spin" size={32} />
-                    <p>Chargement de vos messages...</p>
-                </div>
-            </div>
-          </>
+          <div className="h-[calc(100vh-140px)] flex items-center justify-center bg-white rounded-2xl border border-zinc-200 font-sans">
+              <div className="flex flex-col items-center gap-3 text-zinc-500">
+                  <Loader2 className="animate-spin" size={32} />
+                  <p>Chargement de vos messages...</p>
+              </div>
+          </div>
       );
   }
 
   if (error) {
       return (
-          <>
-            {/* 🟨 DEBUG: Affichage de l'API_URL */}
-            <div className="bg-yellow-200 border border-yellow-400 p-3 mb-4 rounded-lg text-sm font-mono">
-              <strong>🔍 DEBUG API_URL:</strong> {API_URL}
-            </div>
-            <div className="h-[calc(100vh-140px)] flex items-center justify-center bg-white rounded-2xl border border-zinc-200 font-sans">
-                <div className="flex flex-col items-center gap-3 text-red-500">
-                    <AlertCircle size={32} />
-                    <p>Erreur : {error}</p>
-                    <button onClick={fetchEmails} className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-lg text-sm hover:bg-zinc-200 transition-colors">
-                        Réessayer
-                    </button>
-                </div>
-            </div>
-          </>
+          <div className="h-[calc(100vh-140px)] flex items-center justify-center bg-white rounded-2xl border border-zinc-200 font-sans">
+              <div className="flex flex-col items-center gap-3 text-red-500">
+                  <AlertCircle size={32} />
+                  <p>Erreur : {error}</p>
+                  <button onClick={fetchEmails} className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-lg text-sm hover:bg-zinc-200 transition-colors">
+                      Réessayer
+                  </button>
+              </div>
+          </div>
       );
   }
 
   return (
-    <>
-      {/* 🟨 DEBUG: Affichage de l'API_URL */}
-      <div className="bg-yellow-200 border border-yellow-400 p-3 mb-4 rounded-lg text-sm font-mono">
-        <strong>🔍 DEBUG API_URL:</strong> {API_URL}
-      </div>
-      
-      <div className="h-[calc(100vh-140px)] bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden flex font-sans">
+    <div className="h-[calc(100vh-140px)] bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden flex font-sans">
         
         {/* COLONNE GAUCHE : LISTE */}
         <div className={`w-full md:w-1/3 flex flex-col border-r border-zinc-200 ${selectedEmailId ? 'hidden md:flex' : 'flex'}`}>
@@ -519,7 +501,6 @@ const InboxPage = () => {
 
       </div>
     </div>
-    </>
   );
 };
 
