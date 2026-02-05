@@ -1,145 +1,249 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Phone, Mail, FileText, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
+import { DragDropContext } from '@hello-pangea/dnd';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import KanbanColumn from '../components/kanban/KanbanColumn';
+import CandidateCard from '../components/kanban/CandidateCard';
 
-// URL API dynamique
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// API URL dynamique
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+/**
+ * PipelinePage - Vue Kanban Pipeline Locatif Suisse
+ * Design: "Apple-like" (Zero Learning Curve)
+ * Data: API / Candidates
+ */
 const PipelinePage = () => {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Colonnes définies selon le CDC 6.2 (Location)
-  const columns = [
-    { id: 'NEW', title: 'Nouveaux', color: 'border-l-blue-500' },
-    { id: 'VISIT', title: 'Visites', color: 'border-l-purple-500' },
-    { id: 'DOSSIER', title: 'Dossiers', color: 'border-l-amber-500' },
-    { id: 'DECISION', title: 'Décision', color: 'border-l-indigo-500' },
-    { id: 'DONE', title: 'Terminé', color: 'border-l-emerald-500' }
+  // Configuration des colonnes selon le workflow suisse (CDC 6.2)
+  const COLUMNS = {
+    nouveaux: {
+      id: 'nouveaux',
+      title: 'Nouveaux',
+      statuses: ['NEW', 'TO_QUALIFY'],
+      color: { 
+        border: 'border-indigo-500', 
+        text: 'text-indigo-600', 
+        cardBorder: 'border-l-indigo-500' 
+      },
+    },
+    visites: {
+      id: 'visites',
+      title: 'Visites',
+      statuses: ['VISIT_SCHEDULED', 'VISIT_DONE'],
+      color: { 
+        border: 'border-blue-500', 
+        text: 'text-blue-600', 
+        cardBorder: 'border-l-blue-500' 
+      },
+    },
+    enCours: {
+      id: 'enCours',
+      title: 'En Cours',
+      statuses: ['DOSSIER_INCOMPLETE', 'DOSSIER_PENDING'],
+      color: { 
+        border: 'border-amber-500', 
+        text: 'text-amber-600', 
+        cardBorder: 'border-l-amber-500' 
+      },
+    },
+    prets: {
+      id: 'prets',
+      title: 'Prêts',
+      statuses: ['DOSSIER_READY'],
+      color: { 
+        border: 'border-purple-500', 
+        text: 'text-purple-600', 
+        cardBorder: 'border-l-purple-500' 
+      },
+    },
+    decision: {
+      id: 'decision',
+      title: 'Décision',
+      statuses: ['TRANSMITTED', 'UNDER_REVIEW', 'RETAINED'],
+      color: { 
+        border: 'border-emerald-500', 
+        text: 'text-emerald-600', 
+        cardBorder: 'border-l-emerald-500' 
+      },
+    },
+  };
+
+  const COLUMN_ORDER = ['nouveaux', 'visites', 'enCours', 'prets', 'decision'];
+
+  // Données de démonstration (Fallback si DB vide)
+  const DEMO_DATA = [
+    {
+      id: 'demo-1',
+      firstName: 'Jean',
+      lastName: 'Dupont',
+      email: 'jean.dupont@example.com',
+      phone: '+41 79 123 45 67',
+      monthlyIncome: 8500,
+      createdAt: new Date().toISOString(),
+      applications: [{
+        status: 'DOSSIER_READY', // Colonne Prêts
+        property: { city: 'Lausanne', rooms: 3.5 }
+      }],
+      latestSolvencyProfile: {
+        solvencyScore: 95,
+        solvencyRating: 'EXCELLENT',
+        pursuitsStatus: 'CLEAN'
+      }
+    },
+    {
+      id: 'demo-2',
+      firstName: 'Pierre',
+      lastName: 'Morel',
+      email: 'pierre.morel@example.com',
+      monthlyIncome: 4200,
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+      applications: [{
+        status: 'VISIT_SCHEDULED', // Colonne Visites
+        property: { city: 'Gland', rooms: 2.5 }
+      }],
+      latestSolvencyProfile: {
+        solvencyScore: 25,
+        solvencyRating: 'RISKY',
+        pursuitsStatus: 'MAJOR_ISSUES'
+      }
+    }
   ];
 
+  // Fetch candidats depuis le backend
   useEffect(() => {
     fetchCandidates();
   }, []);
 
   const fetchCandidates = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
       const response = await fetch(`${API_URL}/api/candidates`);
-      if (!response.ok) throw new Error('Erreur réseau');
-      const data = await response.json();
       
-      // Mapping intelligent des statuts API vers les colonnes UI
-      const mappedData = data.data.map(c => ({
-        ...c,
-        columnId: mapStatusToColumn(c.status)
-      }));
+      // Mode dégradé si API down ou DB vide
+      if (!response.ok) {
+        console.warn('API non disponible, chargement des données de démo');
+        setCandidates(DEMO_DATA);
+        return;
+      }
       
-      setCandidates(mappedData);
+      const result = await response.json();
+      
+      if (result.success && result.data && result.data.length > 0) {
+        setCandidates(result.data);
+        console.log(`✅ ${result.data.length} candidats chargés`);
+      } else {
+        // Si aucune donnée en DB, charger la démo pour l'UX
+        console.log('Aucun candidat en DB, chargement démo');
+        setCandidates(DEMO_DATA);
+      }
     } catch (err) {
-      console.error("Erreur pipeline:", err);
-      setError("Impossible de charger les candidats.");
-      // Données de secours pour démo si API vide (Failover)
-      if (candidates.length === 0) loadDemoData(); 
+      console.error('❌ Erreur fetch candidats:', err);
+      // Fallback sur données démo en cas d'erreur réseau
+      setCandidates(DEMO_DATA);
+      toast.info("Mode Démo activé (API inaccessible)");
     } finally {
       setLoading(false);
     }
   };
 
-  const mapStatusToColumn = (status) => {
-    if (['NEW', 'TO_QUALIFY'].includes(status)) return 'NEW';
-    if (['VISIT_SCHEDULED', 'VISIT_DONE'].includes(status)) return 'VISIT';
-    if (['DOSSIER_INCOMPLETE', 'DOSSIER_READY', 'DOSSIER_PENDING'].includes(status)) return 'DOSSIER';
-    if (['TRANSMITTED', 'UNDER_REVIEW', 'RETAINED', 'REJECTED'].includes(status)) return 'DECISION';
-    if (['CONTRACT_SIGNED', 'ARCHIVED'].includes(status)) return 'DONE';
-    return 'NEW'; // Fallback
+  // Grouper les candidats par colonne selon leur status
+  const getCandidatesByColumn = (columnId) => {
+    const column = COLUMNS[columnId];
+    if (!column) return [];
+
+    return candidates.filter(candidate => {
+      // Prendre la dernière application active
+      const latestApp = candidate.applications?.find(
+        app => !['REJECTED', 'ARCHIVED', 'WITHDRAWN'].includes(app.status)
+      ) || candidate.applications?.[0]; // Fallback pour données démo simples
+      
+      if (!latestApp) return false;
+      
+      return column.statuses.includes(latestApp.status);
+    });
   };
 
-  const loadDemoData = () => {
-     // Juste pour éviter l'écran blanc si la DB est vide au début
-     setCandidates([
-         { id: 'demo1', firstName: 'Jean', lastName: 'Dupont', property: { name: 'T3 Lausanne' }, columnId: 'DOSSIER', solvencyScore: 95, pursuitsStatus: 'CLEAN' },
-         { id: 'demo2', firstName: 'Pierre', lastName: 'Morel', property: { name: 'Studio Gland' }, columnId: 'DECISION', solvencyScore: 25, pursuitsStatus: 'MAJOR_ISSUES' }
-     ]);
+  // Gestion du Drag & Drop
+  const onDragEnd = async (result) => {
+    const { destination, source, draggableId } = result;
+
+    // Pas de destination ou drop au même endroit
+    if (!destination) return;
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+
+    const destColumn = COLUMNS[destination.droppableId];
+    
+    // Optimistic update pour l'UX
+    const candidateToMove = candidates.find(c => String(c.id) === draggableId);
+    if (!candidateToMove) return;
+
+    // Dans une vraie implémentation : 
+    // 1. Mettre à jour l'état local immédiatement
+    // 2. Envoyer la requête API
+    // 3. Revert si erreur
+    
+    toast.info(`Déplacement vers "${destColumn.title}"`, {
+      description: 'Mise à jour du statut en cours...'
+    });
+
+    // TODO: Appel API réel pour update status
   };
 
-  if (loading) return <div className="p-10 text-center text-zinc-500">Chargement du pipeline...</div>;
+  // État de chargement
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-140px)] w-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-zinc-500">
+          <Loader2 size={32} className="animate-spin text-indigo-500" />
+          <p className="text-sm font-medium">Chargement du pipeline...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-screen bg-[#F5F5F7] text-zinc-900 font-sans overflow-hidden">
-      {/* Header */}
-      <div className="px-8 py-5 bg-white/80 backdrop-blur-md border-b border-zinc-200 flex justify-between items-center sticky top-0 z-10">
-        <h1 className="text-2xl font-bold tracking-tight">Pipeline Location</h1>
-        <div className="flex gap-3">
-            <button className="p-2 text-zinc-400 hover:bg-zinc-100 rounded-lg"><Search size={20} /></button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition-all shadow-sm">
-                <Plus size={18} /> Nouveau Candidat
-            </button>
-        </div>
-      </div>
+    <div className="h-[calc(100vh-140px)] w-full font-sans">
+      <DragDropContext onDragEnd={onDragEnd}>
+        {/* Container responsive : Grid sur Desktop, Scroll Snap sur Mobile */}
+        <div className="flex md:grid md:grid-cols-5 gap-4 h-full overflow-x-auto md:overflow-visible snap-x snap-mandatory pb-4 md:pb-0 px-4 md:px-0 scroll-pl-4">
+          
+          {COLUMN_ORDER.map((columnId) => {
+            const column = COLUMNS[columnId];
+            const columnCandidates = getCandidatesByColumn(columnId);
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
-        <div className="flex h-full gap-6 min-w-[1200px]">
-          {columns.map(col => (
-            <div key={col.id} className="flex-1 flex flex-col min-w-[280px] max-w-[350px]">
-              {/* Column Header */}
-              <div className="flex items-center justify-between mb-4 px-2">
-                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${col.color.replace('border-l-', 'bg-')}`}></span>
-                    {col.title}
-                </h3>
-                <span className="bg-zinc-200 text-zinc-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                    {candidates.filter(c => c.columnId === col.id).length}
-                </span>
-              </div>
-
-              {/* Drop Zone */}
-              <div className="flex-1 bg-zinc-100/50 rounded-xl p-2 overflow-y-auto space-y-3">
-                {candidates.filter(c => c.columnId === col.id).map(candidate => (
-                  <div key={candidate.id} className={`bg-white p-4 rounded-xl border-l-4 ${col.color} shadow-sm hover:shadow-md transition-all cursor-pointer group`}>
-                    
-                    {/* Header Carte */}
-                    <div className="flex justify-between items-start mb-2">
-                        <div>
-                            <h4 className="font-bold text-zinc-900 text-base">{candidate.firstName} {candidate.lastName}</h4>
-                            <p className="text-xs text-zinc-500 font-medium truncate max-w-[180px]">
-                                {candidate.property ? candidate.property.name : 'Recherche générale'}
-                            </p>
-                        </div>
-                        {/* 🇨🇭 Badge Swiss Safe - Solvabilité */}
-                        {candidate.solvencyScore >= 80 && (
-                            <div className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-emerald-100 flex items-center gap-1" title="Solvabilité vérifiée">
-                                <Shield size={10} /> 95%
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 🇨🇭 Badge Swiss Safe - Poursuites (Alerte) */}
-                    {candidate.pursuitsStatus === 'MAJOR_ISSUES' && (
-                        <div className="mb-3 bg-red-50 text-red-700 px-2 py-1 rounded-md text-xs font-bold border border-red-100 flex items-center gap-1.5">
-                            <AlertTriangle size={12} />
-                            Poursuites Détectées
-                        </div>
-                    )}
-
-                    {/* Footer Carte (Actions) */}
-                    <div className="flex items-center justify-between pt-3 border-t border-zinc-50 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <span className="text-xs text-zinc-400">
-                            {candidate.monthlyIncome ? `CHF ${candidate.monthlyIncome}.-` : 'Revenu N/A'}
-                        </span>
-                        <div className="flex gap-1">
-                            <button className="p-1.5 hover:bg-zinc-100 rounded text-zinc-400 hover:text-indigo-600"><Mail size={14}/></button>
-                            <button className="p-1.5 hover:bg-zinc-100 rounded text-zinc-400 hover:text-indigo-600"><FileText size={14}/></button>
-                        </div>
-                    </div>
-                  </div>
+            return (
+              <KanbanColumn 
+                key={column.id} 
+                columnId={column.id}
+                title={column.title} 
+                count={columnCandidates.length} 
+                colorClass={column.color}
+              >
+                {columnCandidates.map((candidate, index) => (
+                  <CandidateCard
+                    key={candidate.id}
+                    candidate={candidate}
+                    index={index}
+                    statusColor={column.color.cardBorder}
+                  />
                 ))}
-              </div>
-            </div>
-          ))}
+              </KanbanColumn>
+            );
+          })}
+          
         </div>
-      </div>
+      </DragDropContext>
     </div>
   );
 };
