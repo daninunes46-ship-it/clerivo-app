@@ -1,0 +1,830 @@
+// ============================================================================
+// CLERIVO - SCHEMA PRISMA v1.0
+// Module 2 : Pipeline & Candidats (Swiss Safe + Deep Core)
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MODELS - CORE ENTITIES
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// USER (TeamOps - Multi-utilisateurs)
+// ----------------------------------------------------------------------------
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String
+  
+  firstName       String
+  lastName        String
+  role            UserRole @default(AGENT)
+  
+  isActive        Boolean  @default(true)
+  lastLoginAt     DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  assignedThreads      Thread[]
+  assignedApplications Application[]
+  internalComments     InternalComment[]
+  applicationEvents    ApplicationEvent[]
+  auditLogs            AuditLog[]
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  AGENT
+  READONLY
+}
+
+// ----------------------------------------------------------------------------
+// PROPERTY (Biens Immobiliers)
+// ----------------------------------------------------------------------------
+model Property {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Informations de base
+  reference       String   @unique
+  address         String
+  city            String
+  postalCode      String
+  canton          String?
+  
+  propertyType    PropertyType
+  rooms           Float    // 2.5, 3.5, etc. (standard suisse)
+  surfaceArea     Float?
+  floor           Int?
+  hasBalcony      Boolean  @default(false)
+  hasParking      Boolean  @default(false)
+  
+  // Financier
+  monthlyRent     Float  
+  charges         Float? 
+  deposit         Float? 
+  
+  // Statut
+  availableFrom   DateTime?
+  status          PropertyStatus @default(AVAILABLE)
+  
+  description     String?  
+  
+  // Relations
+  applications    Application[]
+}
+
+enum PropertyType {
+  APARTMENT
+  HOUSE
+  STUDIO
+  LOFT
+  COMMERCIAL
+  PARKING
+  OTHER
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  RESERVED
+  RENTED
+  UNAVAILABLE
+  MAINTENANCE
+}
+
+// ----------------------------------------------------------------------------
+// CANDIDATE (Identité & Profil de base)
+// ----------------------------------------------------------------------------
+model Candidate {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Identité de base
+  firstName   String
+  lastName    String
+  email       String   @unique
+  phone       String?
+  dateOfBirth DateTime?
+  
+  // Spécificités Suisses - Statut de résidence
+  residencyStatus  ResidencyStatus  @default(NOT_DECLARED)
+  permitType       String?          // B, C, G, L, Citoyen CH
+  permitExpiry     DateTime?
+  
+  // Configuration du profil (impact checklist Swiss Safe)
+  applicantType    ApplicantType    @default(SINGLE)
+  isStudent        Boolean          @default(false)
+  isSelfEmployed   Boolean          @default(false)
+  
+  // Informations financières (de base)
+  monthlyIncome    Float?         
+  currentRent      Float?         
+  
+  // Adresse actuelle
+  currentAddress   String?
+  currentCity      String?
+  currentPostalCode String?
+  
+  // Relations
+  applications     Application[]
+  documents        Document[]
+  solvencyProfiles SolvencyProfile[]
+  guarantors       Guarantor[]      @relation("CandidateGuarantors")
+  
+  // Soft delete (DataVault - rétention)
+  deletedAt        DateTime?
+  
+  @@index([email])
+}
+
+enum ResidencyStatus {
+  NOT_DECLARED
+  SWISS_CITIZEN
+  PERMIT_B        // Autorisation de séjour
+  PERMIT_C        // Autorisation d'établissement
+  PERMIT_G        // Autorisation frontalier
+  PERMIT_L        // Autorisation de courte durée
+  OTHER
+}
+
+enum ApplicantType {
+  SINGLE
+  COUPLE
+  FLATSHARE        // Colocation
+  WITH_GUARANTOR
+}
+
+// ----------------------------------------------------------------------------
+// SOLVENCY PROFILE (Swiss Safe Core - Solvabilité Suisse)
+// ----------------------------------------------------------------------------
+model SolvencyProfile {
+  id              String   @id @default(uuid())
+  candidateId     String
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // SWISS SAFE - Champs Poursuites (Extrait du registre)
+  pursuitsStatus       PursuitsStatus   @default(NOT_CHECKED)
+  pursuitsDocumentId   String?          @unique
+  pursuitsDocument     Document?        @relation("PursuitsDocument", fields: [pursuitsDocumentId], references: [id])
+  pursuitsIssuedDate   DateTime?        // Date d'émission de l'extrait
+  pursuitsExpiryDate   DateTime?        // Date d'expiration (CDC: 3-6 mois)
+  pursuitsAmount       Float?         
+  pursuitsDetails      String?           // JSON stringifié des poursuites détectées
+  
+  // SWISS SAFE - Champs Emploi/Revenus
+  employmentType       EmploymentType   @default(NOT_DECLARED)
+  employerName         String?
+  employmentStartDate  DateTime?
+  contractType         String?          // CDI, CDD, etc.
+  
+  // Fiches de salaire (CDC: 3 derniers mois)
+  salarySlipsReceived  Int              @default(0)
+  salarySlipsRequired  Int              @default(3)
+  averageMonthlyGross  Float?         
+  averageMonthlyNet    Float?         
+  
+  // SWISS SAFE - Assurance Responsabilité Civile
+  hasLiabilityInsurance Boolean         @default(false)
+  liabilityDocumentId   String?         @unique
+  liabilityDocument     Document?       @relation("LiabilityDocument", fields: [liabilityDocumentId], references: [id])
+  liabilityInsurer      String?
+  liabilityPolicyNumber String?
+  
+  // SWISS SAFE - Garantie de Loyer
+  guaranteeType         GuaranteeType?
+  guaranteeAmount       Float?        
+  guaranteeProofId      String?         @unique
+  guaranteeProof        Document?       @relation("GuaranteeProof", fields: [guaranteeProofId], references: [id])
+  guaranteeInstitution  String?         // Nom de la banque/assurance
+  
+  // Score calculé (automatique via SolvencyScore - V1.1)
+  solvencyScore         Int?            // 0-100
+  solvencyRating        SolvencyRating?
+  scoreCalculatedAt     DateTime?
+  scoreJustification    String?         
+  
+  // VALIDATION CTO : Versioning (historisation profils)
+  version               Int             @default(1)
+  isActive              Boolean         @default(true)
+  
+  @@unique([candidateId, version])
+  @@index([candidateId])
+  @@index([isActive])
+}
+
+enum PursuitsStatus {
+  NOT_CHECKED
+  PENDING_DOCUMENT
+  CLEAN              // Pas de poursuites
+  MINOR_ISSUES       // Poursuites mineures acceptables
+  MAJOR_ISSUES       // Poursuites bloquantes
+  EXPIRED            // Document trop ancien
+}
+
+enum EmploymentType {
+  NOT_DECLARED
+  SALARIED_CDI       // Contrat à durée indéterminée
+  SALARIED_CDD       // Contrat à durée déterminée
+  SELF_EMPLOYED      // Indépendant
+  STUDENT
+  RETIRED
+  UNEMPLOYED
+  OTHER
+}
+
+enum GuaranteeType {
+  BLOCKED_ACCOUNT    // Compte bloqué (SwissCaution, FirstCaution, etc.)
+  BANK_GUARANTEE     // Garantie bancaire
+  CASH_DEPOSIT       // Dépôt en espèces
+  GUARANTOR          // Personne garante
+  INSURANCE          // Assurance cautionnement
+}
+
+enum SolvencyRating {
+  EXCELLENT
+  GOOD
+  ACCEPTABLE
+  RISKY
+  REJECTED
+}
+
+// ----------------------------------------------------------------------------
+// GUARANTOR (Garants Suisses)
+// ----------------------------------------------------------------------------
+model Guarantor {
+  id              String   @id @default(uuid())
+  candidateId     String
+  candidate       Candidate @relation("CandidateGuarantors", fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Identité du garant
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  relationship    String?  // Parent, Employeur, Ami, etc.
+  
+  // Adresse
+  address         String?
+  city            String?
+  postalCode      String?
+  
+  // Solvabilité du garant
+  monthlyIncome   Float? 
+  hasOwnPursuits  Boolean  @default(false)
+  pursuitsDetails String?  
+  
+  // Documents garant
+  documents       Document[]
+  
+  @@index([candidateId])
+}
+
+// ----------------------------------------------------------------------------
+// DOCUMENT (Swiss Safe - Coffre-fort sécurisé)
+// ----------------------------------------------------------------------------
+model Document {
+  id              String   @id @default(uuid())
+  candidateId     String?
+  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  guarantorId     String?
+  guarantor       Guarantor? @relation(fields: [guarantorId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Métadonnées fichier
+  filename        String
+  originalName    String
+  mimeType        String
+  size            Int
+  checksum        String   @unique
+  
+  // Stockage (DataVault chiffré)
+  storagePath     String
+  isEncrypted     Boolean  @default(true)
+  
+  // Classification
+  documentType    DocumentType
+  category        String?  // Permis, Salaire, Poursuites, etc.
+  
+  // Validation (Sherlock - V1.1)
+  validationStatus ValidationStatus @default(PENDING)
+  validatedAt      DateTime?
+  validatedById    String?
+  validationNotes  String?  
+  
+  // Validité temporelle (CDC 4.1)
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  isExpired        Boolean  @default(false)
+  
+  // OCR & Analyse IA
+  extractedText    String?  
+  ocrConfidence    Float?
+  hasQualityIssues Boolean  @default(false)
+  qualityIssues    String?   // JSON des alertes Sherlock
+  
+  // VALIDATION CTO : Versioning (documents remplacés)
+  replacesDocumentId   String?
+  replacedByDocumentId String?
+  
+  // Relations inverses (SolvencyProfile)
+  pursuitsProfiles    SolvencyProfile[] @relation("PursuitsDocument")
+  liabilityProfiles   SolvencyProfile[] @relation("LiabilityDocument")
+  guaranteeProfiles   SolvencyProfile[] @relation("GuaranteeProof")
+  
+  @@index([candidateId])
+  @@index([documentType])
+  @@index([checksum])
+  @@index([replacesDocumentId])
+}
+
+enum DocumentType {
+  IDENTITY
+  PERMIT
+  SALARY_SLIP
+  EMPLOYMENT_CONTRACT
+  PURSUITS_EXTRACT
+  LIABILITY_INSURANCE
+  GUARANTEE_PROOF
+  REFERENCE_LETTER
+  MOTIVATION_LETTER
+  APPLICATION_FORM
+  TAX_RETURN
+  BANK_STATEMENT
+  OTHER
+}
+
+enum ValidationStatus {
+  PENDING
+  VALID
+  REJECTED
+  EXPIRED
+  REQUIRES_REPLACEMENT
+}
+
+// ----------------------------------------------------------------------------
+// APPLICATION (Dossier de Candidature - Pivot Pipeline)
+// ----------------------------------------------------------------------------
+model Application {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations principales
+  candidateId     String
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  
+  propertyId      String?
+  property        Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  
+  // DEEP CORE : Lien inverse vers les threads
+  threads         Thread[]
+  
+  // Workflow Pipeline (CDC 6.2)
+  status          ApplicationStatus @default(NEW)
+  subStatus       String?           // Motif de blocage (CDC 10.2)
+  previousStatus  ApplicationStatus?
+  statusChangedAt DateTime?
+  
+  // Assignation & TeamOps
+  assignedToId    String?
+  assignedTo      User?     @relation(fields: [assignedToId], references: [id])
+  
+  // Swiss Safe - État du dossier
+  completenessScore Int     @default(0) // 0-100
+  readinessStatus   ReadinessStatus @default(INCOMPLETE)
+  readinessNotes    String?  
+  
+  // Dates clés
+  visitDate         DateTime?
+  visitCompleted    Boolean @default(false)
+  visitNotes        String? 
+  
+  transmittedAt     DateTime?
+  decisionDate      DateTime?
+  contractSignedAt  DateTime?
+  
+  // Métadonnées
+  priority          Priority @default(MEDIUM)
+  source            String?  // Email, Formulaire, Téléphone, etc.
+  notes             String?  
+  
+  // Timeline de vérité (tous les événements)
+  events          ApplicationEvent[]
+  
+  // Soft delete (DataVault)
+  deletedAt       DateTime?
+  
+  @@index([candidateId])
+  @@index([propertyId])
+  @@index([status])
+  @@index([assignedToId])
+}
+
+enum ApplicationStatus {
+  // Phase 1 : Contact Initial
+  NEW                  // Demande entrante (email/formulaire)
+  TO_QUALIFY           // À qualifier (vérifier critères de base)
+  
+  // Phase 2 : Visite
+  VISIT_SCHEDULED      // Visite planifiée (via Chronos)
+  VISIT_DONE           // Visite effectuée, attente dossier
+  VISIT_NO_SHOW        // Candidat absent (alerte)
+  
+  // Phase 3 : Constitution du Dossier (Swiss Safe)
+  DOSSIER_INCOMPLETE   // Dossier incomplet (attente pièces)
+  DOSSIER_PENDING      // Pièces reçues, en cours de validation
+  DOSSIER_READY        // Dossier complet et validé (DossierForge OK)
+  
+  // Phase 4 : Transmission & Décision
+  TRANSMITTED          // Transmis à la régie/bailleur
+  UNDER_REVIEW         // En cours d'analyse par régie
+  ADDITIONAL_INFO      // Informations complémentaires demandées
+  
+  // Phase 5 : Décision Finale
+  RETAINED             // Candidat retenu (pré-signature)
+  REJECTED             // Candidat refusé
+  
+  // Phase 6 : Contractualisation (V1.2 CautionFlow)
+  AWAITING_GUARANTEE   // Attente garantie de loyer
+  GUARANTEE_RECEIVED   // Garantie reçue
+  CONTRACT_SIGNED      // Bail signé
+  
+  // États spéciaux
+  ON_HOLD              // En attente (candidat/régie)
+  WITHDRAWN            // Candidature retirée par candidat
+  ARCHIVED             // Archivé (DataVault)
+}
+
+enum ReadinessStatus {
+  INCOMPLETE
+  ALMOST_READY
+  READY
+  BLOCKED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ----------------------------------------------------------------------------
+// APPLICATION EVENT (Timeline de Vérité)
+// ----------------------------------------------------------------------------
+model ApplicationEvent {
+  id              String   @id @default(uuid())
+  applicationId   String
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  // Type d'événement
+  eventType       EventType
+  
+  // Métadonnées
+  title           String
+  description     String?  
+  
+  // Acteur (qui a fait quoi)
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+  
+  // Lien optionnel vers d'autres entités
+  messageId       String?
+  documentId      String?
+  
+  // Données structurées (JSON)
+  metadata        String?   // JSON stringifié
+  
+  @@index([applicationId, createdAt])
+  @@index([eventType])
+}
+
+enum EventType {
+  // Communication
+  EMAIL_RECEIVED
+  EMAIL_SENT
+  CALL_LOGGED
+  SMS_SENT
+  
+  // Documents
+  DOCUMENT_UPLOADED
+  DOCUMENT_VALIDATED
+  DOCUMENT_REJECTED
+  DOCUMENT_EXPIRED
+  DOCUMENT_REQUESTED
+  
+  // Workflow
+  STATUS_CHANGED
+  ASSIGNED
+  REASSIGNED
+  PRIORITY_CHANGED
+  
+  // Visite
+  VISIT_SCHEDULED
+  VISIT_RESCHEDULED
+  VISIT_CANCELLED
+  VISIT_COMPLETED
+  VISIT_NO_SHOW
+  
+  // Décisions
+  SOLVENCY_CALCULATED
+  QUALITY_CHECK_PASSED
+  QUALITY_CHECK_FAILED
+  TRANSMITTED_TO_LANDLORD
+  DECISION_RECEIVED
+  
+  // Système
+  PACK_GENERATED
+  REMINDER_SENT
+  ALERT_TRIGGERED
+  NOTE_ADDED
+}
+
+// ============================================================================
+// MESSAGING (Deep Core - Inbox ↔ Pipeline)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// THREAD (Regroupement de conversations email)
+// ----------------------------------------------------------------------------
+model Thread {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Métadonnées du fil
+  subject         String
+  participants    String    // JSON array d'emails
+  lastMessageAt   DateTime
+  
+  // DEEP CORE LINK : Lien vers le dossier
+  applicationId   String?
+  application     Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  
+  // Statuts messagerie (CDC 6.1)
+  status          ThreadStatus @default(NEW)
+  priority        Priority     @default(MEDIUM)
+  
+  // Assignation
+  assignedToId    String?
+  assignedTo      User?        @relation(fields: [assignedToId], references: [id])
+  
+  // Métadonnées
+  tags            String?       // JSON array
+  unreadCount     Int          @default(0)
+  messageCount    Int          @default(0)
+  
+  // Relations
+  messages        Message[]
+  
+  // Recherche vectorielle (Plan de Bataille 3 - Phase 4)
+  embeddingVector Bytes?       // Stockage du vecteur pour sqlite-vss
+  
+  @@index([applicationId])
+  @@index([status, priority])
+  @@index([lastMessageAt])
+  @@index([assignedToId])
+}
+
+enum ThreadStatus {
+  NEW
+  TO_QUALIFY
+  AWAITING_DOCUMENTS
+  READY
+  IN_PROGRESS
+  AWAITING_RESPONSE
+  CLOSED
+  ARCHIVED
+}
+
+// ----------------------------------------------------------------------------
+// MESSAGE (Messages individuels email)
+// ----------------------------------------------------------------------------
+model Message {
+  id              String   @id @default(uuid())
+  threadId        String
+  thread          Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  // Contenu email
+  messageId       String   @unique // Message-ID SMTP
+  inReplyTo       String?
+  references      String?  
+  
+  from            String
+  to              String    // JSON array
+  cc              String?   // JSON array
+  bcc             String?   // JSON array
+  
+  subject         String
+  textBody        String?  
+  htmlBody        String?   // Déjà sanitisé par imapService
+  snippet         String?  // Aperçu 100 caractères
+  
+  // Métadonnées
+  receivedAt      DateTime
+  sentAt          DateTime?
+  isRead          Boolean  @default(false)
+  isOutgoing      Boolean  @default(false)
+  isStarred       Boolean  @default(false)
+  
+  // Flags IMAP
+  imapUid         Int?
+  imapFlags       String?   // JSON array
+  
+  // Sécurité (Plan de Bataille 3 : IBAN Hawk)
+  hasIbanDetected Boolean  @default(false)
+  ibanAlertFired  Boolean  @default(false)
+  detectedIbans   String?   // JSON array
+  
+  // Analyse IA
+  sentimentScore  Float?   // -1.0 à +1.0
+  urgencyLevel    UrgencyLevel @default(LOW)
+  detectedIntent  String?  // VISIT, DOSSIER, GARANTIE, EDL, etc.
+  aiSummary       String?  
+  
+  // Tracking (Plan de Bataille 3 : Legal Pixel)
+  trackingPixelId String?  @unique
+  readCount       Int      @default(0)
+  lastReadAt      DateTime?
+  
+  // Pièces jointes
+  attachments     Attachment[]
+  
+  // Collaboration (Plan de Bataille 3 : Whispers)
+  internalComments InternalComment[]
+  
+  @@index([threadId])
+  @@index([messageId])
+  @@index([receivedAt])
+  @@index([isRead])
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ----------------------------------------------------------------------------
+// ATTACHMENT (Pièces jointes emails)
+// ----------------------------------------------------------------------------
+model Attachment {
+  id              String   @id @default(uuid())
+  messageId       String
+  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  filename        String
+  originalName    String
+  mimeType        String
+  size            Int
+  checksum        String
+  
+  // Stockage temporaire (avant classification Swiss Safe)
+  storagePath     String?
+  
+  // Lien vers Document si classifié et validé
+  documentId      String?  @unique
+  
+  // Détection type (pré-classification)
+  detectedType    String?
+  
+  @@index([messageId])
+  @@index([checksum])
+}
+
+// ----------------------------------------------------------------------------
+// INTERNAL COMMENT (Collaboration - Whispers)
+// ----------------------------------------------------------------------------
+model InternalComment {
+  id          String   @id @default(uuid())
+  messageId   String
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  
+  content     String   
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Mentions (@username)
+  mentions    String?   // JSON array de user IDs
+  
+  @@index([messageId])
+  @@index([authorId])
+}
+
+// ============================================================================
+// AUDIT & SECURITY (DataVault)
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// AUDIT LOG (Traçabilité complète)
+// ----------------------------------------------------------------------------
+model AuditLog {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  action      String   // CREATE, UPDATE, DELETE, VIEW, EXPORT
+  entityType  String   // Candidate, Document, Application, etc.
+  entityId    String
+  
+  changes     String?   // JSON diff avant/après
+  
+  // Contexte technique
+  ipAddress   String?
+  userAgent   String?
+  
+  // Métadonnées supplémentaires
+  metadata    String?   // JSON
+  
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([action])
+}
+
+// ----------------------------------------------------------------------------
+// SECURITY EVENT (Alertes de sécurité)
+// ----------------------------------------------------------------------------
+model SecurityEvent {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  
+  eventType   SecurityEventType
+  severity    SecuritySeverity
+  
+  // Description
+  title       String
+  description String   
+  
+  // Entités concernées
+  userId      String?
+  entityType  String?
+  entityId    String?
+  
+  // Contexte
+  ipAddress   String?
+  metadata    String?   // JSON
+  
+  // Résolution
+  isResolved  Boolean  @default(false)
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?  
+  
+  @@index([eventType])
+  @@index([severity])
+  @@index([isResolved])
+}
+
+enum SecurityEventType {
+  IBAN_ALERT
+  SUSPICIOUS_LOGIN
+  MULTIPLE_FAILED_LOGINS
+  DOCUMENT_ACCESS_VIOLATION
+  BULK_EXPORT
+  UNAUTHORIZED_ACCESS
+  DATA_LEAK_ATTEMPT
+  SUSPICIOUS_DOCUMENT
+  FRAUDULENT_DOCUMENT_DETECTED
+  OTHER
+}
+
+enum SecuritySeverity {
+  INFO
+  WARNING
+  HIGH
+  CRITICAL
+}

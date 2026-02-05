@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const emailRoutes = require('./routes/emails');
 const aiRoutes = require('./routes/ai');
+const candidateRoutes = require('./routes/candidates');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,7 @@ app.use(express.json());
 // Routes API
 app.use('/api/emails', emailRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/candidates', candidateRoutes);
 
 // Route de base (Health Check)
 app.get('/', (req, res) => {
