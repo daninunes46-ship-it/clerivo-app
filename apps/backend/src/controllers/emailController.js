@@ -1,7 +1,7 @@
+const imapService = require('../services/imapService');
 const imap = require('imap-simple');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
-const aiAnalysisService = require('../services/aiAnalysisService');
 
 const config = {
   imap: {
@@ -24,32 +24,32 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+/**
+ * Récupère la liste des emails (Sécurisés & avec pièces jointes)
+ */
 exports.getEmails = async (req, res) => {
-  let connection;
   try {
-    // 1. Connexion
-    // console.log('Connecting to IMAP...');
-    connection = await imap.connect(config);
+    console.log('🔄 Récupération des emails via imapService...');
     
-    // 2. Ouverture de la boîte
-    await connection.openBox('INBOX');
+    // On appelle le nouveau service "Blindé"
+    const result = await imapService.fetchEmails({ limit: 20 });
+    
+    // On renvoie le résultat propre au Frontend
+    res.json(result.data);
 
-    // 3. Recherche (Derniers 20 messages pour commencer)
-    // TODO: Optimiser avec pagination pour la V2
-    const searchCriteria = ['ALL'];
-    const fetchOptions = {
-      bodies: [''], // Récupère tout le raw message (header + body)
-      markSeen: false,
-      struct: true
-    };
+  } catch (error) {
+    console.error('❌ Erreur Controller:', error.message);
+    res.status(500).json({ 
+      error: 'Erreur lors de la récupération des emails',
+      details: error.message 
+    });
+  }
+};
 
     const allMessages = await connection.search(searchCriteria, fetchOptions);
     
     // On prend les 20 derniers et on inverse pour avoir les plus récents en premier
     const messagesToProcess = allMessages.slice(-20).reverse(); 
-    
-    // Load local AI metadata cache once
-    const aiMetadata = aiAnalysisService.loadMetadata();
 
     const emails = [];
 
@@ -62,9 +62,6 @@ exports.getEmails = async (req, res) => {
         try {
             const parsed = await simpleParser(all.body);
             
-            // Check for existing AI analysis
-            const analysis = aiMetadata[id] || null;
-
             emails.push({
                 id: id,
                 seq: seq,
@@ -76,9 +73,7 @@ exports.getEmails = async (req, res) => {
                 text: parsed.text, // Contenu texte complet pour l'affichage détail
                 html: parsed.html, // Contenu HTML complet pour l'affichage riche (si dispo)
                 unread: !flags.includes('\\Seen'),
-                hasAttachments: parsed.attachments && parsed.attachments.length > 0,
-                // Attach AI Data if available
-                ai: analysis
+                hasAttachments: parsed.attachments && parsed.attachments.length > 0
             });
         } catch (err) {
             console.error(`Erreur parsing email UID ${id}:`, err.message);

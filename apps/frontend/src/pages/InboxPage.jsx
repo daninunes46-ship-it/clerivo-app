@@ -6,6 +6,8 @@ import DOMPurify from 'dompurify';
 import EmailAnalysisCard from '../components/EmailAnalysisCard';
 import SmartBadge from '../components/SmartBadge';
 
+// On utilise l'URL définie dans Vercel, ou localhost par défaut
+const API_URL = import.meta.env.VITE_API_URL || `${API_URL}`';
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ const InboxPage = () => {
   const fetchEmails = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3000/api/emails');
+      const response = await fetch(`${API_URL}`/api/emails');
       
       if (!response.ok) {
         throw new Error('Erreur réseau lors de la récupération des emails');
@@ -51,7 +53,9 @@ const InboxPage = () => {
            body: email.text || 'Contenu non disponible en format texte.',
            html: email.html,
            color: getColorForSender(email.from ? (email.from.name || email.from.address) : ''),
-           ai: email.ai // Récupération des métadonnées IA si existantes
+           ai: email.ai, // Récupération des métadonnées IA si existantes
+           hasAttachments: email.hasAttachments || false, // 📎 Indicateur de pièces jointes
+           attachments: email.attachments || [] // 📎 Métadonnées des pièces jointes
         }));
         setEmails(formattedEmails);
       } else {
@@ -86,7 +90,7 @@ const InboxPage = () => {
   const triggerAnalysis = async (id, email) => {
       setAnalyzing(true);
       try {
-          const response = await fetch('http://localhost:3000/api/ai/analyze-full', {
+          const response = await fetch(`${API_URL}`/api/ai/analyze-full', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -134,7 +138,7 @@ const InboxPage = () => {
     
     setSending(true);
     try {
-        const response = await fetch('http://localhost:3000/api/emails/send', {
+        const response = await fetch(`${API_URL}`/api/emails/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -168,7 +172,7 @@ const InboxPage = () => {
     const toastId = toast.loading("L'IA rédige votre réponse...");
 
     try {
-      const response = await fetch('http://localhost:3000/api/ai/draft', {
+      const response = await fetch(`${API_URL}`/api/ai/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,6 +268,10 @@ const InboxPage = () => {
                         {email.from}
                     </span>
                     {email.unread && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0"></span>}
+                    {/* 📎 Icône Trombone si pièces jointes */}
+                    {email.hasAttachments && (
+                      <Paperclip size={14} className="text-zinc-400" />
+                    )}
                     </div>
                     <span className={`text-xs ${email.unread ? 'text-indigo-600 font-bold' : 'text-zinc-400'}`}>
                     {email.date}
@@ -356,6 +364,39 @@ const InboxPage = () => {
                   __html: DOMPurify.sanitize(selectedEmail.html || selectedEmail.body || '<i>Aucun contenu</i>')
                 }}
               />
+
+              {/* 📎 Section Pièces Jointes */}
+              {selectedEmail.hasAttachments && selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-zinc-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Paperclip size={16} className="text-zinc-500" />
+                    <h3 className="text-sm font-bold text-zinc-700">
+                      {selectedEmail.attachments.length} pièce{selectedEmail.attachments.length > 1 ? 's' : ''} jointe{selectedEmail.attachments.length > 1 ? 's' : ''}
+                    </h3>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedEmail.attachments.map((attachment, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-zinc-50 border border-zinc-200 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-zinc-200 rounded flex items-center justify-center text-zinc-600">
+                            <Paperclip size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-zinc-900">{attachment.filename}</p>
+                            <p className="text-xs text-zinc-500">
+                              {(attachment.size / 1024).toFixed(1)} Ko • {attachment.contentType}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs text-zinc-400 italic">Non téléchargeable en v1</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Reply Footer - Zone de réponse */}
