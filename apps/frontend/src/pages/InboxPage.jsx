@@ -6,7 +6,8 @@ import DOMPurify from 'dompurify';
 import EmailAnalysisCard from '../components/EmailAnalysisCard';
 import SmartBadge from '../components/SmartBadge';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// 🌐 URL relative pour fonctionner avec le proxy Vite (mobile ready)
+const API_URL = '';
 
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);

@@ -5,8 +5,8 @@ import { toast } from 'sonner';
 import KanbanColumn from '../components/kanban/KanbanColumn';
 import CandidateCard from '../components/kanban/CandidateCard';
 
-// API URL dynamique
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// 🌐 URL relative pour fonctionner avec le proxy Vite (mobile ready)
+const API_URL = '';
 
 /**
  * PipelinePage - Vue Kanban Pipeline Locatif Suisse

@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// 🌐 URL relative pour fonctionner avec le proxy Vite (mobile ready)
+const API_URL = '';
 
 // ============================================================================
 // MOCK DATA (Pour valider le design & les cas d'usage Suisse)
