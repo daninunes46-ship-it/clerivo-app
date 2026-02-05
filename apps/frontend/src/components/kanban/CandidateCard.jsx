@@ -2,11 +2,15 @@ import React from 'react';
 import { Calendar, User, MapPin, Shield, AlertTriangle, CheckCircle, Mail, Phone } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
 
+import { useNavigate } from 'react-router-dom';
+
 /**
  * CandidateCard - Carte candidat pour le Pipeline Locatif Suisse
  * Affiche: Nom, Bien, Revenu, Badges Swiss Safe (Solvency + Poursuites)
  */
 const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200' }) => {
+  const navigate = useNavigate();
+
   // Extraction des données du candidat
   const { firstName, lastName, email, monthlyIncome } = candidate;
   const latestApplication = candidate.applications?.[0];
@@ -99,6 +103,7 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200' }) 
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{ ...provided.draggableProps.style }}
+          onClick={() => navigate(`/candidates/${candidate.id}`)}
           className={`
             bg-white p-4 rounded-xl shadow-sm border border-zinc-100 
             border-l-4 ${statusColor}

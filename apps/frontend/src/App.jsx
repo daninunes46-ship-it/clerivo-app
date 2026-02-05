@@ -6,10 +6,14 @@ import InboxPage from './pages/InboxPage';
 import PipelinePage from './pages/PipelinePage';
 import ContactsPage from './pages/ContactsPage';
 
+import CandidateDetailPage from './pages/CandidateDetailPage';
+
 function App() {
   const location = useLocation();
 
   const getPageTitle = (pathname) => {
+    if (pathname.startsWith('/candidates/')) return { title: 'Fiche Candidat', subtitle: 'Détails, documents et solvabilité.' };
+
     switch (pathname) {
       case '/': return { title: 'Dashboard', subtitle: "Vue d'ensemble de votre activité immobilière." };
       case '/inbox': return { title: 'Inbox', subtitle: 'Vos messages et notifications.' };
@@ -38,6 +42,7 @@ function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/pipeline" element={<PipelinePage />} />
+        <Route path="/candidates/:id" element={<CandidateDetailPage />} />
         <Route path="/contacts" element={<ContactsPage />} />
       </Routes>
       <Toaster richColors position="top-right" closeButton />
