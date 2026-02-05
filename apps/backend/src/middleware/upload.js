@@ -5,13 +5,25 @@
 
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
+
+// 🛡️ SÉCURITÉ : Créer le dossier uploads automatiquement s'il n'existe pas
+const UPLOAD_DIR = path.join(__dirname, '../../storage/uploads');
+
+if (!fs.existsSync(UPLOAD_DIR)) {
+  console.log('📁 Création du dossier uploads...');
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log(`✅ Dossier créé : ${UPLOAD_DIR}`);
+} else {
+  console.log(`✅ Dossier uploads existant : ${UPLOAD_DIR}`);
+}
 
 // Configuration du stockage sur disque
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Stocker dans storage/uploads
-    cb(null, path.join(__dirname, '../../storage/uploads'));
+    // Stocker dans storage/uploads (dossier garanti d'exister)
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     // Générer un nom unique : timestamp + random + extension originale
