@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const candidateController = require('../controllers/candidateController');
+const upload = require('../middleware/upload');
 
 /**
  * @route   GET /api/candidates
@@ -49,5 +50,12 @@ router.delete('/:id', candidateController.deleteCandidate);
  * @access  Private (Agent+)
  */
 router.get('/:id/solvency', candidateController.getSolvencyProfile);
+
+/**
+ * @route   POST /api/candidates/:id/documents
+ * @desc    Upload un document pour un candidat (Swiss Safe)
+ * @access  Private (Agent+)
+ */
+router.post('/:id/documents', upload.single('file'), candidateController.uploadDocument);
 
 module.exports = router;

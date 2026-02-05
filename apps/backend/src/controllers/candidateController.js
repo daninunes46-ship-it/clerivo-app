@@ -490,4 +490,89 @@ exports.getSolvencyProfile = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/candidates/:id/documents
+ * Upload un document pour un candidat (Swiss Safe)
+ */
+exports.uploadDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Vérifier qu'un fichier a été uploadé
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Aucun fichier uploadé'
+      });
+    }
+
+    // Vérifier que le candidat existe
+    const candidate = await prisma.candidate.findUnique({
+      where: { id },
+      include: {
+        solvencyProfiles: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: 'Candidat non trouvé'
+      });
+    }
+
+    // Extraire les métadonnées du fichier
+    const { originalname, filename, mimetype, size, path: filePath } = req.file;
+    const { documentType, description } = req.body;
+
+    // Créer l'entrée Document dans la base
+    const document = await prisma.document.create({
+      data: {
+        candidateId: id,
+        documentType: documentType || 'OTHER',
+        originalName: originalname,
+        storedName: filename,
+        mimeType: mimetype,
+        sizeBytes: size,
+        storagePath: filePath,
+        description: description || null,
+        validationStatus: 'PENDING',
+        isSwissOfficial: ['PURSUITS_EXTRACT', 'IDENTITY_CARD', 'PERMIT'].includes(documentType)
+      }
+    });
+
+    // 🎯 Logique Simple : +10 points si document Swiss Safe ajouté
+    if (document.isSwissOfficial && candidate.solvencyProfiles[0]) {
+      const currentScore = candidate.solvencyProfiles[0].solvencyScore || 0;
+      const newScore = Math.min(100, currentScore + 10); // Cap à 100
+
+      await prisma.solvencyProfile.update({
+        where: { id: candidate.solvencyProfiles[0].id },
+        data: { solvencyScore: newScore }
+      });
+
+      console.log(`✅ Solvency Score mis à jour: ${currentScore} → ${newScore}`);
+    }
+
+    console.log(`✅ Document uploadé: ${originalname} pour ${candidate.firstName} ${candidate.lastName}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Document uploadé avec succès',
+      data: document
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur uploadDocument:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de l\'upload du document',
+      error: error.message
+    });
+  }
+};
+
 module.exports = exports;

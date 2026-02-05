@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Shield, AlertTriangle, CheckCircle, FileText, 
   Mail, Phone, MapPin, UploadCloud, Clock, Calendar, 
-  Download, Eye, MoreHorizontal, UserCheck, Briefcase
+  Download, Eye, MoreHorizontal, UserCheck, Briefcase, Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // ============================================================================
 // MOCK DATA (Pour valider le design & les cas d'usage Suisse)
@@ -100,9 +103,229 @@ const CandidateDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profil'); // profil | swiss-safe | comms
+  
+  // États API
+  const [candidate, setCandidate] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Chargement Mock (ou API plus tard)
-  const candidate = MOCK_CANDIDATES[id] || MOCK_CANDIDATES['demo-1']; // Fallback sur demo-1 si ID inconnu
+  // Charger les données du candidat
+  useEffect(() => {
+    fetchCandidate();
+  }, [id]);
+
+  const fetchCandidate = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/api/candidates/${id}`);
+      
+      if (!response.ok) {
+        throw new Error('Candidat non trouvé');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Mapper les données API vers le format UI
+        const mappedCandidate = mapCandidateFromAPI(data.data);
+        setCandidate(mappedCandidate);
+      } else {
+        throw new Error(data.message || 'Erreur API');
+      }
+    } catch (err) {
+      console.error("Erreur fetch candidate:", err);
+      setError(err.message);
+      // Fallback sur mock si erreur (pour la démo)
+      setCandidate(MOCK_CANDIDATES['demo-1']);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mapper les données API vers le format UI attendu
+  const mapCandidateFromAPI = (apiData) => {
+    const latestProfile = apiData.solvencyProfiles?.[0];
+    const latestApplication = apiData.applications?.[0];
+    
+    return {
+      id: apiData.id,
+      firstName: apiData.firstName,
+      lastName: apiData.lastName,
+      email: apiData.email,
+      phone: apiData.phone || 'N/A',
+      avatar: null,
+      
+      property: latestApplication?.property ? {
+        name: latestApplication.property.name,
+        address: latestApplication.property.fullAddress || 'Adresse non spécifiée',
+        rent: latestApplication.property.rentMonthly || 0
+      } : { name: 'Recherche générale', address: 'N/A', rent: 0 },
+      
+      status: latestApplication?.status || 'NEW',
+      
+      permitType: apiData.permitType || 'Non déclaré',
+      nationality: apiData.residencyStatus === 'SWISS_NATIONAL' ? 'Suisse' : apiData.residencyStatus || 'Non déclaré',
+      maritalStatus: apiData.applicantType || 'Non déclaré',
+      
+      employmentType: latestProfile?.employmentType || 'N/A',
+      employer: latestProfile?.employerName || 'N/A',
+      monthlyIncome: apiData.monthlyIncome || 0,
+      guarantor: apiData.guarantors?.[0] ? { 
+        name: `${apiData.guarantors[0].firstName} ${apiData.guarantors[0].lastName}`, 
+        status: 'VALIDATED' 
+      } : null,
+      
+      solvencyScore: latestProfile?.solvencyScore || 0,
+      solvencyRating: getSolvencyRating(latestProfile?.solvencyScore || 0),
+      pursuitsStatus: latestProfile?.pursuitsStatus || 'NOT_CHECKED',
+      
+      documents: (apiData.documents || []).map(doc => ({
+        id: doc.id,
+        name: doc.originalName,
+        type: doc.mimeType?.includes('pdf') ? 'PDF' : 'JPG',
+        date: new Date(doc.createdAt).toLocaleDateString('fr-FR'),
+        status: doc.validationStatus,
+        isSwissKey: doc.isSwissOfficial
+      })),
+      
+      timeline: buildTimeline(apiData)
+    };
+  };
+
+  const getSolvencyRating = (score) => {
+    if (score >= 80) return 'EXCELLENT';
+    if (score >= 60) return 'BON';
+    if (score >= 40) return 'MOYEN';
+    return 'RISKY';
+  };
+
+  const buildTimeline = (apiData) => {
+    const timeline = [];
+    
+    // Ajouter les événements de candidature
+    if (apiData.applications?.[0]?.events) {
+      apiData.applications[0].events.forEach(event => {
+        timeline.push({
+          id: event.id,
+          type: event.eventType,
+          date: new Date(event.createdAt).toLocaleString('fr-FR'),
+          title: event.description || event.eventType,
+          content: event.details || ''
+        });
+      });
+    }
+    
+    // Ajouter les messages email
+    if (apiData.applications?.[0]?.threads?.[0]?.messages) {
+      apiData.applications[0].threads[0].messages.forEach(msg => {
+        timeline.push({
+          id: `msg-${msg.id}`,
+          type: msg.direction === 'INBOUND' ? 'EMAIL_RECEIVED' : 'EMAIL_SENT',
+          date: new Date(msg.receivedAt || msg.sentAt).toLocaleString('fr-FR'),
+          title: msg.subject,
+          content: msg.body?.substring(0, 150) + '...' || ''
+        });
+      });
+    }
+    
+    return timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  // Upload de document
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    
+    try {
+      setUploading(true);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentType', 'OTHER'); // On peut améliorer ça plus tard
+      formData.append('description', `Uploadé depuis l'interface le ${new Date().toLocaleDateString('fr-FR')}`);
+      
+      const response = await fetch(`${API_URL}/api/candidates/${id}/documents`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('Document uploadé avec succès !');
+        // Rafraîchir les données du candidat
+        fetchCandidate();
+      } else {
+        throw new Error(data.message || 'Erreur upload');
+      }
+    } catch (err) {
+      console.error('Erreur upload:', err);
+      toast.error(`Erreur d'upload: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Gestion du drag & drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  // Affichage loading
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto pb-10 flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center gap-3 text-zinc-500">
+          <Loader2 className="animate-spin" size={32} />
+          <p>Chargement du candidat...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Affichage erreur
+  if (error && !candidate) {
+    return (
+      <div className="max-w-6xl mx-auto pb-10 flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center gap-3 text-red-500">
+          <AlertTriangle size={32} />
+          <p>Erreur : {error}</p>
+          <button 
+            onClick={() => navigate('/pipeline')} 
+            className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-lg text-sm hover:bg-zinc-200 transition-colors"
+          >
+            Retour au Pipeline
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!candidate) return null;
 
   // Helpers UI
   const getScoreColor = (score) => {
@@ -305,13 +528,43 @@ const CandidateDetailPage = () => {
         {/* --- ONGLET 2: SWISS SAFE (DOCUMENTS) --- */}
         {activeTab === 'swiss-safe' && (
            <div className="bg-white rounded-xl border border-zinc-100 shadow-sm overflow-hidden">
-             {/* Drag & Drop Zone (Visuel) */}
-             <div className="border-b border-zinc-100 bg-zinc-50/50 p-6 flex flex-col items-center justify-center border-dashed border-2 border-zinc-200 m-4 rounded-xl hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors cursor-pointer group">
-                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-2 group-hover:scale-110 transition-transform">
-                   <UploadCloud size={20} className="text-indigo-500" />
-                </div>
-                <p className="text-sm font-medium text-zinc-700">Glissez-déposez des fichiers ici</p>
-                <p className="text-xs text-zinc-400 mt-1">PDF, JPG, PNG (Max 10MB)</p>
+             {/* Drag & Drop Zone (Fonctionnel) */}
+             <div 
+               className={`border-b border-zinc-100 p-6 flex flex-col items-center justify-center border-dashed border-2 m-4 rounded-xl transition-all cursor-pointer group relative ${
+                 isDragging 
+                   ? 'bg-indigo-50 border-indigo-400' 
+                   : uploading 
+                   ? 'bg-zinc-100 border-zinc-300' 
+                   : 'bg-zinc-50/50 border-zinc-200 hover:bg-indigo-50/50 hover:border-indigo-200'
+               }`}
+               onDragOver={handleDragOver}
+               onDragLeave={handleDragLeave}
+               onDrop={handleDrop}
+               onClick={() => !uploading && document.getElementById('fileInput').click()}
+             >
+                <input 
+                  id="fileInput"
+                  type="file" 
+                  className="hidden" 
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  onChange={handleFileInputChange}
+                  disabled={uploading}
+                />
+                
+                {uploading ? (
+                  <>
+                    <Loader2 className="animate-spin text-indigo-500 mb-2" size={24} />
+                    <p className="text-sm font-medium text-zinc-700">Upload en cours...</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-2 group-hover:scale-110 transition-transform">
+                       <UploadCloud size={20} className="text-indigo-500" />
+                    </div>
+                    <p className="text-sm font-medium text-zinc-700">Glissez-déposez des fichiers ici ou cliquez</p>
+                    <p className="text-xs text-zinc-400 mt-1">PDF, JPG, PNG (Max 10MB)</p>
+                  </>
+                )}
              </div>
 
              {/* Liste des documents */}
