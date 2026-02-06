@@ -14,8 +14,6 @@ function AppContent() {
   const location = useLocation();
   const { user, loading } = useAuth();
 
-  console.log('🟡 [APP CONTENT] RENDER - pathname:', location.pathname, '| loading:', loading, '| user:', user?.email || 'NULL');
-
   const getPageTitle = (pathname) => {
     if (pathname.startsWith('/candidates/')) return { title: 'Fiche Candidat', subtitle: 'Détails, documents et solvabilité.' };
 
@@ -35,7 +33,6 @@ function AppContent() {
 
   // ÉTAPE 1 : BLOQUE TOUT pendant le chargement
   if (loading) {
-    console.log('🟡 [APP CONTENT] État = LOADING - Affichage du spinner');
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-zinc-50">
         <div className="flex flex-col items-center gap-3 text-zinc-500">
@@ -48,18 +45,15 @@ function AppContent() {
 
   // ÉTAPE 2 : Si pas connecté ET pas sur /login -> REDIRECTION IMMÉDIATE
   if (!user && !isLoginPage) {
-    console.log('🔴 [APP CONTENT] PAS DE USER + PAS SUR /login -> REDIRECTION VERS /login');
     return <Navigate to="/login" replace />;
   }
 
   // ÉTAPE 3 : Si connecté ET sur /login -> REDIRECTION vers dashboard
   if (user && isLoginPage) {
-    console.log('🟢 [APP CONTENT] USER TROUVÉ + SUR /login -> REDIRECTION VERS /');
     return <Navigate to="/" replace />;
   }
 
   // ÉTAPE 4 : Rendu de la page (login ou contenu protégé)
-  console.log('🟡 [APP CONTENT] Rendu de la page:', isLoginPage ? 'LOGIN' : 'DASHBOARD/AUTRE');
   return (
     <>
       {isLoginPage ? (

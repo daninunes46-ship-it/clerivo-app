@@ -21,20 +21,14 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  console.log('🔵 [AUTH CONTEXT] RENDER - loading:', loading, '| user:', user?.email || 'NULL');
-
   // Vérifier la session au chargement
   useEffect(() => {
-    console.log('🟢 [AUTH CONTEXT] useEffect déclenché - Appel checkSession()');
     checkSession();
   }, []);
 
   // Vérifier si l'utilisateur est authentifié (via cookie httpOnly)
   const checkSession = async () => {
-    console.log('🔴 [CHECK SESSION] DÉBUT - loading=true, user=null');
     try {
-      console.log('🔐 [CHECK SESSION] Fetch vers /api/auth/me...');
-      
       const response = await fetch(`${API_URL}/api/auth/me`, {
         method: 'GET',
         credentials: 'include', // ⚠️ CRITIQUE : Envoie les cookies httpOnly
@@ -43,27 +37,20 @@ export const AuthProvider = ({ children }) => {
         }
       });
 
-      console.log('🔴 [CHECK SESSION] Réponse reçue - status:', response.status);
-
       if (response.ok) {
         const data = await response.json();
-        console.log('🔴 [CHECK SESSION] Data:', data);
         if (data.success && data.user) {
-          console.log('✅ [CHECK SESSION] Session valide:', data.user.email);
           setUser(data.user);
         } else {
-          console.log('⚠️ [CHECK SESSION] Pas de session active - setUser(null)');
           setUser(null);
         }
       } else {
-        console.log('⚠️ [CHECK SESSION] Session expirée ou inexistante (status:', response.status, ') - setUser(null)');
         setUser(null);
       }
     } catch (err) {
-      console.error('❌ [CHECK SESSION] Erreur vérification session:', err);
+      console.error('Erreur de connexion au serveur');
       setUser(null);
     } finally {
-      console.log('🔴 [CHECK SESSION] FIN - setLoading(false)');
       setLoading(false);
     }
   };
