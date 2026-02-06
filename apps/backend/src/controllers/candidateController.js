@@ -553,7 +553,7 @@ exports.uploadDocument = async (req, res) => {
     // Créer l'entrée Document dans la base
     const document = await prisma.document.create({
       data: {
-        candidateId: id,
+        candidate: { connect: { id: id } }, // Connexion relationnelle Prisma
         documentType: documentType || 'OTHER',
         filename: filename, // Nom du fichier stocké (généré par Multer)
         originalName: originalname,
