@@ -21,15 +21,19 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  console.log('🔵 [AUTH CONTEXT] RENDER - loading:', loading, '| user:', user?.email || 'NULL');
+
   // Vérifier la session au chargement
   useEffect(() => {
+    console.log('🟢 [AUTH CONTEXT] useEffect déclenché - Appel checkSession()');
     checkSession();
   }, []);
 
   // Vérifier si l'utilisateur est authentifié (via cookie httpOnly)
   const checkSession = async () => {
+    console.log('🔴 [CHECK SESSION] DÉBUT - loading=true, user=null');
     try {
-      console.log('🔐 Vérification de la session...');
+      console.log('🔐 [CHECK SESSION] Fetch vers /api/auth/me...');
       
       const response = await fetch(`${API_URL}/api/auth/me`, {
         method: 'GET',
@@ -39,23 +43,27 @@ export const AuthProvider = ({ children }) => {
         }
       });
 
+      console.log('🔴 [CHECK SESSION] Réponse reçue - status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('🔴 [CHECK SESSION] Data:', data);
         if (data.success && data.user) {
-          console.log('✅ Session valide:', data.user.email);
+          console.log('✅ [CHECK SESSION] Session valide:', data.user.email);
           setUser(data.user);
         } else {
-          console.log('⚠️ Pas de session active');
+          console.log('⚠️ [CHECK SESSION] Pas de session active - setUser(null)');
           setUser(null);
         }
       } else {
-        console.log('⚠️ Session expirée ou inexistante');
+        console.log('⚠️ [CHECK SESSION] Session expirée ou inexistante (status:', response.status, ') - setUser(null)');
         setUser(null);
       }
     } catch (err) {
-      console.error('❌ Erreur vérification session:', err);
+      console.error('❌ [CHECK SESSION] Erreur vérification session:', err);
       setUser(null);
     } finally {
+      console.log('🔴 [CHECK SESSION] FIN - setLoading(false)');
       setLoading(false);
     }
   };
