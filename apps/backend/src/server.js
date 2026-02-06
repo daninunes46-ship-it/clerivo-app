@@ -32,7 +32,8 @@ const corsOptions = {
 
 // Sécurité et Middleware de base
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" } // Permet les uploads depuis d'autres origines
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Désactive CSP pour permettre le JavaScript Vite
 }));
 app.use(cors(corsOptions));
 app.use(cookieParser()); // ⚠️ AVANT les routes pour lire req.cookies
