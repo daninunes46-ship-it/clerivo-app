@@ -559,7 +559,7 @@ exports.uploadDocument = async (req, res) => {
         originalName: originalname,
         storedName: filename,
         mimeType: mimetype,
-        sizeBytes: size,
+        size: size, // Taille du fichier en octets
         storagePath: filePath,
         description: description || null,
         validationStatus: 'PENDING',
