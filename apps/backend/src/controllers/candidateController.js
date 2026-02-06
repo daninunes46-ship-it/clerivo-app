@@ -555,6 +555,7 @@ exports.uploadDocument = async (req, res) => {
       data: {
         candidateId: id,
         documentType: documentType || 'OTHER',
+        filename: filename, // Nom du fichier stocké (généré par Multer)
         originalName: originalname,
         storedName: filename,
         mimeType: mimetype,
