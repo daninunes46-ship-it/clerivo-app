@@ -11,10 +11,17 @@ export default defineConfig({
     // Permet l'accès mobile via tunnel (clerivo.ch)
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path // Garde /api dans l'URL
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending Request to the Target:', req.method, req.url);
+          });
+        }
       }
     }
   },

@@ -10,6 +10,11 @@ const candidateRoutes = require('./routes/candidates');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use((req, res, next) => {
+  console.log(`[Backend] ${req.method} ${req.url}`);
+  next();
+});
+
 // 🌐 Configuration CORS permissive (pour tunnel Cloudflare + mobile)
 const corsOptions = {
   origin: true, // Accepte toutes les origines en développement
