@@ -561,6 +561,7 @@ exports.uploadDocument = async (req, res) => {
         mimeType: mimetype,
         size: size, // Taille du fichier en octets
         storagePath: filePath,
+        checksum: "pending", // Placeholder pour validation
         description: description || null,
         validationStatus: 'PENDING',
         isSwissOfficial: ['PURSUITS_EXTRACT', 'IDENTITY_CARD', 'PERMIT'].includes(documentType)
