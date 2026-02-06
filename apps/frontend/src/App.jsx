@@ -18,6 +18,7 @@ function App() {
 
     switch (pathname) {
       case '/': return { title: 'Dashboard', subtitle: "Vue d'ensemble de votre activité immobilière." };
+      case '/dashboard': return { title: 'Dashboard', subtitle: "Vue d'ensemble de votre activité immobilière." };
       case '/inbox': return { title: 'Inbox', subtitle: 'Vos messages et notifications.' };
       case '/pipeline': return { title: 'Pipeline', subtitle: 'Suivi de vos opportunités.' };
       case '/contacts': return { title: 'Contacts', subtitle: 'Gestion de votre réseau.' };
@@ -56,10 +57,13 @@ function App() {
           <Routes>
             {/* Routes protégées */}
             <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+            <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
             <Route path="/inbox" element={<PrivateRoute><InboxPage /></PrivateRoute>} />
             <Route path="/pipeline" element={<PrivateRoute><PipelinePage /></PrivateRoute>} />
             <Route path="/candidates/:id" element={<PrivateRoute><CandidateDetailPage /></PrivateRoute>} />
             <Route path="/contacts" element={<PrivateRoute><ContactsPage /></PrivateRoute>} />
+            {/* Catch-all : redirection vers login si route inconnue et non authentifié */}
+            <Route path="*" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
           </Routes>
           <Toaster richColors position="top-right" closeButton />
         </Layout>
