@@ -498,13 +498,30 @@ exports.uploadDocument = async (req, res) => {
   try {
     const { id } = req.params;
     
+    console.log('📤 Upload Request:', {
+      candidateId: id,
+      hasFile: !!req.file,
+      body: req.body,
+      headers: {
+        contentType: req.headers['content-type']
+      }
+    });
+    
     // Vérifier qu'un fichier a été uploadé
     if (!req.file) {
+      console.log('❌ Aucun fichier dans req.file');
       return res.status(400).json({
         success: false,
         message: 'Aucun fichier uploadé'
       });
     }
+
+    console.log('📄 Fichier reçu:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: `${(req.file.size / 1024).toFixed(1)}KB`,
+      destination: req.file.destination
+    });
 
     // Vérifier que le candidat existe
     const candidate = await prisma.candidate.findUnique({
@@ -518,16 +535,21 @@ exports.uploadDocument = async (req, res) => {
     });
 
     if (!candidate) {
+      console.log('❌ Candidat non trouvé:', id);
       return res.status(404).json({
         success: false,
         message: 'Candidat non trouvé'
       });
     }
 
+    console.log('✅ Candidat trouvé:', candidate.firstName, candidate.lastName);
+
     // Extraire les métadonnées du fichier
     const { originalname, filename, mimetype, size, path: filePath } = req.file;
     const { documentType, description } = req.body;
 
+    console.log('💾 Création du document dans la base...');
+    
     // Créer l'entrée Document dans la base
     const document = await prisma.document.create({
       data: {
@@ -544,6 +566,8 @@ exports.uploadDocument = async (req, res) => {
       }
     });
 
+    console.log('✅ Document créé dans la DB:', document.id);
+
     // 🎯 Logique Simple : +10 points si document Swiss Safe ajouté
     if (document.isSwissOfficial && candidate.solvencyProfiles[0]) {
       const currentScore = candidate.solvencyProfiles[0].solvencyScore || 0;
@@ -557,7 +581,7 @@ exports.uploadDocument = async (req, res) => {
       console.log(`✅ Solvency Score mis à jour: ${currentScore} → ${newScore}`);
     }
 
-    console.log(`✅ Document uploadé: ${originalname} pour ${candidate.firstName} ${candidate.lastName}`);
+    console.log(`🎉 Upload complet: ${originalname} pour ${candidate.firstName} ${candidate.lastName}`);
 
     res.status(201).json({
       success: true,
@@ -567,6 +591,7 @@ exports.uploadDocument = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur uploadDocument:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Erreur lors de l\'upload du document',

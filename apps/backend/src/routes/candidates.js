@@ -56,6 +56,6 @@ router.get('/:id/solvency', candidateController.getSolvencyProfile);
  * @desc    Upload un document pour un candidat (Swiss Safe)
  * @access  Private (Agent+)
  */
-router.post('/:id/documents', upload.single('file'), candidateController.uploadDocument);
+router.post('/:id/documents', upload.withLogging('file'), candidateController.uploadDocument);
 
 module.exports = router;

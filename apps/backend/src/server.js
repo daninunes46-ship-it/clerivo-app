@@ -10,10 +10,23 @@ const candidateRoutes = require('./routes/candidates');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// 🌐 Configuration CORS permissive (pour tunnel Cloudflare + mobile)
+const corsOptions = {
+  origin: true, // Accepte toutes les origines en développement
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  maxAge: 86400 // 24h cache preflight
+};
+
 // Sécurité et Middleware de base
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Permet les uploads depuis d'autres origines
+}));
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Pour multipart/form-data
 
 // Routes API (avec logs pour debug)
 console.log('📦 Mounting API routes...');

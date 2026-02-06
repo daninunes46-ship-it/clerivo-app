@@ -241,6 +241,19 @@ const CandidateDetailPage = () => {
     try {
       setUploading(true);
       
+      // Validation taille et type
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        throw new Error(`Fichier trop volumineux (${(file.size / 1024 / 1024).toFixed(1)}MB). Max: 10MB`);
+      }
+      
+      console.log('📤 Upload:', {
+        name: file.name,
+        type: file.type,
+        size: `${(file.size / 1024).toFixed(1)}KB`,
+        url: `${API_URL}/api/candidates/${id}/documents`
+      });
+      
       const formData = new FormData();
       formData.append('file', file);
       formData.append('documentType', 'OTHER'); // On peut améliorer ça plus tard
@@ -249,11 +262,36 @@ const CandidateDetailPage = () => {
       const response = await fetch(`${API_URL}/api/candidates/${id}/documents`, {
         method: 'POST',
         body: formData
+        // NE PAS mettre Content-Type, le navigateur le génère automatiquement avec boundary
       });
       
-      const data = await response.json();
+      console.log('📊 Response Status:', response.status, response.statusText);
+      console.log('📋 Response Headers:', {
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
+      
+      // 🛡️ Gestion robuste de la réponse
+      let data;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        // Réponse JSON normale
+        data = await response.json();
+      } else {
+        // Réponse non-JSON (HTML d'erreur ou texte brut)
+        const textResponse = await response.text();
+        console.error('❌ Réponse non-JSON:', textResponse.substring(0, 500));
+        throw new Error(`Erreur serveur (${response.status}): ${textResponse.substring(0, 100)}`);
+      }
+      
+      // Vérifier le succès
+      if (!response.ok) {
+        throw new Error(data.message || `Erreur HTTP ${response.status}: ${response.statusText}`);
+      }
       
       if (data.success) {
+        console.log('✅ Upload réussi:', data.data);
         toast.success('Document uploadé avec succès !');
         // Rafraîchir les données du candidat
         fetchCandidate();
@@ -261,8 +299,11 @@ const CandidateDetailPage = () => {
         throw new Error(data.message || 'Erreur upload');
       }
     } catch (err) {
-      console.error('Erreur upload:', err);
-      toast.error(`Erreur d'upload: ${err.message}`);
+      console.error('❌ Erreur upload complète:', err);
+      toast.error(`Erreur d'upload: ${err.message}`, {
+        duration: 5000,
+        description: 'Vérifiez la console pour plus de détails'
+      });
     } finally {
       setUploading(false);
     }

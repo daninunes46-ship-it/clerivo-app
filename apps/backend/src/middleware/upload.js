@@ -59,4 +59,33 @@ const upload = multer({
   }
 });
 
+// Middleware wrapper pour logger les uploads
+const uploadWithLogging = (fieldName) => {
+  return (req, res, next) => {
+    console.log(`📥 Multer middleware activé pour: ${fieldName}`);
+    console.log('Request Content-Type:', req.headers['content-type']);
+    
+    const multerMiddleware = upload.single(fieldName);
+    
+    multerMiddleware(req, res, (err) => {
+      if (err) {
+        console.error('❌ Erreur Multer:', err.message);
+        return res.status(400).json({
+          success: false,
+          message: `Erreur d'upload: ${err.message}`
+        });
+      }
+      
+      if (req.file) {
+        console.log('✅ Fichier reçu par Multer:', req.file.originalname);
+      } else {
+        console.log('⚠️ Aucun fichier reçu par Multer');
+      }
+      
+      next();
+    });
+  };
+};
+
 module.exports = upload;
+module.exports.withLogging = uploadWithLogging;
