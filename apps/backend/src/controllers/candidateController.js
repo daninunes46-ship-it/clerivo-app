@@ -495,33 +495,43 @@ exports.getSolvencyProfile = async (req, res) => {
  * Upload un document pour un candidat (Swiss Safe)
  */
 exports.uploadDocument = async (req, res) => {
+  console.log("!!! CODE UPDATED V2 - FIX APPLIED !!!");
+  // #region agent log
+  const fs = require('fs');
+  const crypto = require('crypto');
+  const runId = `run_${Date.now()}`;
+  try {
+    const debugPayload = {
+      location: 'candidateController.js:uploadDocument:start',
+      message: 'Starting document upload',
+      data: { 
+        candidateId: req.params.id, 
+        hasFile: !!req.file,
+        fileDetails: req.file ? { 
+          originalname: req.file.originalname, 
+          mimetype: req.file.mimetype, 
+          size: req.file.size 
+        } : null
+      },
+      timestamp: Date.now(),
+      sessionId: 'debug-session',
+      runId: runId,
+      hypothesisId: 'schema_mismatch_fix'
+    };
+    fs.appendFileSync('/home/clerivo2/projects/clerivo/.cursor/debug.log', JSON.stringify(debugPayload) + '\n');
+  } catch (e) {}
+  // #endregion
+
   try {
     const { id } = req.params;
     
-    console.log('📤 Upload Request:', {
-      candidateId: id,
-      hasFile: !!req.file,
-      body: req.body,
-      headers: {
-        contentType: req.headers['content-type']
-      }
-    });
-    
     // Vérifier qu'un fichier a été uploadé
     if (!req.file) {
-      console.log('❌ Aucun fichier dans req.file');
       return res.status(400).json({
         success: false,
         message: 'Aucun fichier uploadé'
       });
     }
-
-    console.log('📄 Fichier reçu:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: `${(req.file.size / 1024).toFixed(1)}KB`,
-      destination: req.file.destination
-    });
 
     // Vérifier que le candidat existe
     const candidate = await prisma.candidate.findUnique({
@@ -535,53 +545,84 @@ exports.uploadDocument = async (req, res) => {
     });
 
     if (!candidate) {
-      console.log('❌ Candidat non trouvé:', id);
       return res.status(404).json({
         success: false,
         message: 'Candidat non trouvé'
       });
     }
 
-    console.log('✅ Candidat trouvé:', candidate.firstName, candidate.lastName);
-
     // Extraire les métadonnées du fichier
     const { originalname, filename, mimetype, size, path: filePath } = req.file;
-    const { documentType, description } = req.body;
+    const { documentType } = req.body;
 
-    console.log('💾 Création du document dans la base...');
-    
+    // Calcul du checksum (Requis par le schéma: String @unique)
+    let fileChecksum;
+    try {
+        const fileBuffer = fs.readFileSync(filePath);
+        fileChecksum = crypto.createHash('md5').update(fileBuffer).digest('hex');
+    } catch (err) {
+        // Fallback unique si lecture impossible
+        fileChecksum = `${filename}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    }
+
+    const documentData = {
+      candidate: { connect: { id: id } },
+      documentType: documentType || 'OTHER',
+      filename: filename,
+      originalName: originalname,
+      mimeType: mimetype,
+      size: size,
+      storagePath: filePath,
+      checksum: fileChecksum,
+      validationStatus: 'PENDING',
+      isEncrypted: true
+    };
+
+    // #region agent log
+    try {
+      fs.appendFileSync('/home/clerivo2/projects/clerivo/.cursor/debug.log', JSON.stringify({
+        location: 'candidateController.js:uploadDocument:beforeCreate',
+        message: 'Payload for prisma.document.create',
+        data: { documentData },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        runId: runId,
+        hypothesisId: 'schema_mismatch_fix'
+      }) + '\n');
+    } catch (e) {}
+    // #endregion
+
     // Créer l'entrée Document dans la base
     const document = await prisma.document.create({
-      data: {
-        candidate: { connect: { id: id } }, // Connexion relationnelle Prisma
-        documentType: documentType || 'OTHER',
-        filename: filename, // Nom du fichier stocké (généré par Multer)
-        originalName: originalname,
-        storedName: filename,
-        mimeType: mimetype,
-        size: size, // Taille du fichier en octets
-        storagePath: filePath,
-        checksum: "pending", // Placeholder pour validation
-        description: description || null,
-        validationStatus: 'PENDING',
-        isSwissOfficial: ['PURSUITS_EXTRACT', 'IDENTITY_CARD', 'PERMIT'].includes(documentType)
-      }
+      data: documentData
     });
 
-    console.log('✅ Document créé dans la DB:', document.id);
-
-    // 🎯 Logique Simple : +10 points si document Swiss Safe ajouté
-    if (document.isSwissOfficial && candidate.solvencyProfiles[0]) {
+    // Mise à jour du score (logique métier adaptée sans le champ inexistant isSwissOfficial)
+    const isSwissOfficialType = ['PURSUITS_EXTRACT', 'IDENTITY_CARD', 'PERMIT'].includes(documentType);
+    
+    if (isSwissOfficialType && candidate.solvencyProfiles && candidate.solvencyProfiles[0]) {
       const currentScore = candidate.solvencyProfiles[0].solvencyScore || 0;
-      const newScore = Math.min(100, currentScore + 10); // Cap à 100
+      const newScore = Math.min(100, currentScore + 10);
 
       await prisma.solvencyProfile.update({
         where: { id: candidate.solvencyProfiles[0].id },
         data: { solvencyScore: newScore }
       });
-
-      console.log(`✅ Solvency Score mis à jour: ${currentScore} → ${newScore}`);
     }
+
+    // #region agent log
+    try {
+      fs.appendFileSync('/home/clerivo2/projects/clerivo/.cursor/debug.log', JSON.stringify({
+        location: 'candidateController.js:uploadDocument:success',
+        message: 'Document created successfully',
+        data: { documentId: document.id },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        runId: runId,
+        hypothesisId: 'schema_mismatch_fix'
+      }) + '\n');
+    } catch (e) {}
+    // #endregion
 
     console.log(`🎉 Upload complet: ${originalname} pour ${candidate.firstName} ${candidate.lastName}`);
 
@@ -592,8 +633,21 @@ exports.uploadDocument = async (req, res) => {
     });
 
   } catch (error) {
+    // #region agent log
+    try {
+      fs.appendFileSync('/home/clerivo2/projects/clerivo/.cursor/debug.log', JSON.stringify({
+        location: 'candidateController.js:uploadDocument:error',
+        message: 'Error creating document',
+        data: { error: error.message, stack: error.stack },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        runId: runId,
+        hypothesisId: 'schema_mismatch_fix'
+      }) + '\n');
+    } catch (e) {}
+    // #endregion
+
     console.error('❌ Erreur uploadDocument:', error);
-    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Erreur lors de l\'upload du document',

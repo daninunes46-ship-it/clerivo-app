@@ -25,11 +25,13 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    proxy: proxyConfig
+    proxy: proxyConfig,
+    allowedHosts: true  // Permet l'accès via tunnels Cloudflare
   },
   preview: {
     host: true,
     port: 5173,
-    proxy: proxyConfig
+    proxy: proxyConfig,
+    allowedHosts: true  // Permet l'accès via tunnels Cloudflare
   }
 })

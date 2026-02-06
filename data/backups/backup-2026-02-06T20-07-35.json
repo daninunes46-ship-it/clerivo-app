@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-06T20:07:35.982Z",
+  "backupName": "backup-2026-02-06T20-07-35",
+  "database": {
+    "path": "/home/clerivo2/projects/clerivo/apps/backend/data/clerivo.db",
+    "size": 344064
+  },
+  "uploads": {
+    "size": 8537023
+  },
+  "archive": {
+    "size": 7934124,
+    "checksum": "4428ff46f35bfa93b220441b2fcbd47cde08de403512ff7ca7af3dd84541ddf2",
+    "ratio": "10.7%"
+  }
+}

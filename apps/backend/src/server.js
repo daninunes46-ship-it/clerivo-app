@@ -1,11 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
 require('dotenv').config();
 
 const emailRoutes = require('./routes/emails');
 const aiRoutes = require('./routes/ai');
 const candidateRoutes = require('./routes/candidates');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,11 +33,29 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" } // Permet les uploads depuis d'autres origines
 }));
 app.use(cors(corsOptions));
+app.use(cookieParser()); // ⚠️ AVANT les routes pour lire req.cookies
+
+// 🔐 Configuration des sessions (MemoryStore pour V1)
+app.use(session({
+  name: 'clerivo.sid', // Nom du cookie (évite les conflits)
+  secret: process.env.SESSION_SECRET || 'clerivo-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true, // Protection XSS
+    secure: process.env.NODE_ENV === 'production', // HTTPS uniquement en prod
+    sameSite: 'lax', // Protection CSRF
+    maxAge: 24 * 60 * 60 * 1000 // 24 heures
+  }
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Pour multipart/form-data
 
 // Routes API (avec logs pour debug)
 console.log('📦 Mounting API routes...');
+app.use('/api/auth', authRoutes);
+console.log('✅ Auth routes mounted');
 app.use('/api/emails', emailRoutes);
 console.log('✅ Email routes mounted');
 app.use('/api/ai', aiRoutes);
