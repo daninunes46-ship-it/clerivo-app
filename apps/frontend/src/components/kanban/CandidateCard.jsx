@@ -103,7 +103,14 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200' }) 
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{ ...provided.draggableProps.style }}
-          onClick={() => navigate(`/candidates/${candidate.id}`)}
+          onClick={() => {
+            console.log('🔗 Navigation vers candidat:', candidate.id);
+            if (!candidate.id) {
+              console.error('❌ ID candidat manquant dans la carte');
+              return;
+            }
+            navigate(`/candidates/${candidate.id}`);
+          }}
           className={`
             bg-white p-4 rounded-xl shadow-sm border border-zinc-100 
             border-l-4 ${statusColor}

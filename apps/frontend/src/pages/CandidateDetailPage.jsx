@@ -112,9 +112,21 @@ const CandidateDetailPage = () => {
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // 🔍 Debug: Log de l'ID au chargement
+  useEffect(() => {
+    console.log('🆔 CandidateDetailPage - ID depuis URL:', id);
+    console.log('🆔 Type:', typeof id, '| Valide:', !!id && id !== 'undefined');
+  }, [id]);
+
   // Charger les données du candidat
   useEffect(() => {
-    fetchCandidate();
+    if (id && id !== 'undefined') {
+      fetchCandidate();
+    } else {
+      console.error('❌ ID invalide, impossible de charger le candidat');
+      setError('ID candidat invalide');
+      setLoading(false);
+    }
   }, [id]);
 
   const fetchCandidate = async () => {
@@ -241,25 +253,43 @@ const CandidateDetailPage = () => {
     try {
       setUploading(true);
       
+      // 🛡️ SÉCURITÉ : Vérifier que l'ID candidat existe
+      console.log('🔍 ID Candidat:', id);
+      console.log('🔍 Type ID:', typeof id, 'Valeur:', id);
+      
+      if (!id || id === 'undefined' || id === 'null') {
+        toast.error("Erreur: ID candidat introuvable", {
+          description: "Impossible d'uploader sans ID candidat valide"
+        });
+        console.error('❌ ID candidat manquant ou invalide:', id);
+        return;
+      }
+      
       // Validation taille et type
       const maxSize = 10 * 1024 * 1024; // 10MB
       if (file.size > maxSize) {
         throw new Error(`Fichier trop volumineux (${(file.size / 1024 / 1024).toFixed(1)}MB). Max: 10MB`);
       }
       
-      console.log('📤 Upload:', {
-        name: file.name,
-        type: file.type,
-        size: `${(file.size / 1024).toFixed(1)}KB`,
-        url: `${API_URL}/api/candidates/${id}/documents`
+      // Construction de l'URL en relatif (proxy Vite)
+      const uploadUrl = `/api/candidates/${id}/documents`;
+      
+      console.log('📤 Upload Infos:', {
+        candidateId: id,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: `${(file.size / 1024).toFixed(1)}KB`
       });
+      console.log('🎯 URL Cible:', uploadUrl);
       
       const formData = new FormData();
       formData.append('file', file);
       formData.append('documentType', 'OTHER'); // On peut améliorer ça plus tard
       formData.append('description', `Uploadé depuis l'interface le ${new Date().toLocaleDateString('fr-FR')}`);
       
-      const response = await fetch(`${API_URL}/api/candidates/${id}/documents`, {
+      console.log('📦 FormData créé, envoi en cours...');
+      
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
         // NE PAS mettre Content-Type, le navigateur le génère automatiquement avec boundary
