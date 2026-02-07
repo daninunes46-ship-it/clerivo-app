@@ -201,7 +201,7 @@ const CandidateDetailPage = () => {
       status: latestApplication?.status || 'NEW',
       
       permitType: apiData.permitType || 'Non déclaré',
-      nationality: apiData.residencyStatus === 'SWISS_NATIONAL' ? 'Suisse' : apiData.residencyStatus || 'Non déclaré',
+      nationality: getResidencyStatusLabel(apiData.residencyStatus || 'NOT_DECLARED'),
       maritalStatus: apiData.applicantType || 'Non déclaré',
       
       employmentType: latestProfile?.employmentType || 'N/A',
@@ -234,6 +234,20 @@ const CandidateDetailPage = () => {
     if (score >= 60) return 'BON';
     if (score >= 40) return 'MOYEN';
     return 'RISKY';
+  };
+
+  // Mapper les statuts de résidence vers des labels français
+  const getResidencyStatusLabel = (status) => {
+    const labels = {
+      'NOT_DECLARED': 'Non déclaré',
+      'SWISS_CITIZEN': 'Citoyen Suisse',
+      'PERMIT_B': 'Permis B (Séjour)',
+      'PERMIT_C': 'Permis C (Établissement)',
+      'PERMIT_G': 'Permis G (Frontalier)',
+      'PERMIT_L': 'Permis L (Courte durée)',
+      'OTHER': 'Autre statut'
+    };
+    return labels[status] || status;
   };
 
   const buildTimeline = (apiData) => {
@@ -602,13 +616,15 @@ const CandidateDetailPage = () => {
         {/* Carte de Gauche: Identité & Contact */}
         <div className="md:col-span-2 bg-white rounded-2xl border border-zinc-100 shadow-sm p-6 flex flex-col justify-between">
           <div className="flex items-start justify-between">
-            <div className="flex gap-4">
-               <div className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center text-xl font-bold text-zinc-400">
-                  {candidate.firstName[0]}{candidate.lastName[0]}
-               </div>
-               <div>
-                 <h2 className="text-lg font-bold">Candidat {candidate.nationality}</h2>
-                 <div className="flex flex-col gap-1 mt-1">
+               <div className="flex gap-4">
+                  <div className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center text-xl font-bold text-zinc-400">
+                     {candidate.firstName[0]}{candidate.lastName[0]}
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold">
+                      {candidate.nationality === 'Non déclaré' ? 'Candidat' : `Candidat ${candidate.nationality}`}
+                    </h2>
+                    <div className="flex flex-col gap-1 mt-1">
                    <div className="flex items-center gap-2 text-sm text-zinc-600">
                      <Mail size={14} className="text-zinc-400" /> {candidate.email}
                    </div>
