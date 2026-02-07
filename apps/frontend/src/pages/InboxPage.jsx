@@ -6,8 +6,12 @@ import DOMPurify from 'dompurify';
 import EmailAnalysisCard from '../components/EmailAnalysisCard';
 import SmartBadge from '../components/SmartBadge';
 
-// 🌐 URL relative pour fonctionner avec le proxy Vite (mobile ready)
-const API_URL = '';
+// 🌐 URL API : Utilise la variable d'environnement ou proxy Vite
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+// #region agent log
+fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:11',message:'API_URL initialized',data:{API_URL,VITE_API_URL:import.meta.env.VITE_API_URL,allEnvVars:import.meta.env},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,D'})}).catch(()=>{});
+// #endregion
 
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);
@@ -34,13 +38,28 @@ const InboxPage = () => {
   const fetchEmails = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/emails`);
+      // #region agent log
+      const fullUrl = `${API_URL}/api/emails`;
+      fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:37',message:'About to fetch emails',data:{API_URL,fullUrl,windowOrigin:window.location.origin},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
+      // #endregion
+      const response = await fetch(fullUrl);
+      
+      // #region agent log
+      fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:43',message:'Fetch response received',data:{status:response.status,statusText:response.statusText,contentType:response.headers.get('content-type'),url:response.url,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,E'})}).catch(()=>{});
+      // #endregion
       
       if (!response.ok) {
+        // #region agent log
+        const responseText = await response.text();
+        fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:49',message:'Response not OK - captured body',data:{status:response.status,responseText:responseText.substring(0,500),isHTML:responseText.startsWith('<')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,E'})}).catch(()=>{});
+        // #endregion
         throw new Error('Erreur réseau lors de la récupération des emails');
       }
       
       const data = await response.json();
+      // #region agent log
+      fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:60',message:'JSON parsed successfully',data:{success:data.success,dataLength:data.data?.length,keys:Object.keys(data)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       if (data.success) {
         // Mapper les données API vers le format UI
         const formattedEmails = data.data.map(email => ({
@@ -64,6 +83,9 @@ const InboxPage = () => {
       }
     } catch (err) {
       console.error("Erreur fetch emails:", err);
+      // #region agent log
+      fetch('http://localhost:7242/ingest/f6bc3034-93fd-46ad-989f-26889a413c45',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InboxPage.jsx:85',message:'CATCH block - error occurred',data:{errorMessage:err.message,errorName:err.name,errorStack:err.stack?.substring(0,300)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C'})}).catch(()=>{});
+      // #endregion
       setError(err.message);
     } finally {
       setLoading(false);
@@ -336,7 +358,7 @@ const InboxPage = () => {
             <div className="flex-1 overflow-y-auto p-6 md:p-10">
               
               {/* NEURAL INBOX: AI ANALYSIS CARD */}
-              <EmailAnalysisCard analysis={analysis} loading={analyzing} />
+              <EmailAnalysisCard analysis={analysis} loading={analyzing} emailData={selectedEmail} />
 
               {/* Subject & Meta */}
               <div className="mb-8">
