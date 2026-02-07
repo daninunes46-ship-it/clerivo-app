@@ -10,6 +10,7 @@ const emailRoutes = require('./routes/emails');
 const aiRoutes = require('./routes/ai');
 const candidateRoutes = require('./routes/candidates');
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -86,6 +87,8 @@ app.use('/api/ai', aiRoutes);
 console.log('✅ AI routes mounted');
 app.use('/api/candidates', candidateRoutes);
 console.log('✅ Candidate routes mounted (including upload endpoint)');
+app.use('/api/admin', adminRoutes);
+console.log('✅ Admin routes mounted (fix-pipeline, stats)');
 
 // 🛡️ Handler 404 pour routes API inexistantes (AVANT le catch-all frontend)
 app.use('/api/*', (req, res) => {

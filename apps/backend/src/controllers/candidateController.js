@@ -249,7 +249,13 @@ exports.createCandidate = async (req, res) => {
       });
     }
 
-    // Créer le candidat avec transaction
+    // ═══════════════════════════════════════════════════════════════
+    // TRANSACTION ATOMIQUE (CRITICAL)
+    // ═══════════════════════════════════════════════════════════════
+    // Si la création du Candidate OU de l'Application échoue,
+    // TOUTE la transaction est annulée (rollback automatique).
+    // Cela garantit qu'on ne crée JAMAIS de "candidats orphelins".
+    // ═══════════════════════════════════════════════════════════════
     const result = await prisma.$transaction(async (tx) => {
       // Créer le candidat
       const newCandidate = await tx.candidate.create({
@@ -273,7 +279,8 @@ exports.createCandidate = async (req, res) => {
         }
       });
 
-      // ✨ CRÉER UNE APPLICATION PAR DÉFAUT (pour que le Pipeline fonctionne)
+      // ✨ CRÉER UNE APPLICATION PAR DÉFAUT (OBLIGATOIRE pour Pipeline)
+      // Si cette création échoue, le Candidate ci-dessus sera rollback.
       const newApplication = await tx.application.create({
         data: {
           candidateId: newCandidate.id,
@@ -299,6 +306,9 @@ exports.createCandidate = async (req, res) => {
       }
 
       return { candidate: newCandidate, application: newApplication, profile: newProfile };
+    }, {
+      maxWait: 5000, // Temps max d'attente pour acquérir le verrou (5s)
+      timeout: 10000, // Temps max d'exécution de la transaction (10s)
     });
 
     console.log(`✅ CANDIDAT CRÉÉ: ${result.candidate.firstName} ${result.candidate.lastName} (ID: ${result.candidate.id})`);
@@ -312,11 +322,45 @@ exports.createCandidate = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur createCandidate:', error);
+    console.error('❌ ERREUR CRITIQUE createCandidate:', error);
+    
+    // Logging détaillé pour diagnostic
+    console.error('   Type:', error.constructor.name);
+    console.error('   Code:', error.code);
+    console.error('   Message:', error.message);
+    
+    // Gestion spécifique des erreurs Prisma
+    if (error.code === 'P2002') {
+      // Contrainte unique violée (email déjà existant normalement déjà géré)
+      return res.status(409).json({
+        success: false,
+        message: 'Un candidat avec cet email existe déjà'
+      });
+    }
+    
+    if (error.code === 'P2025') {
+      // Record requis non trouvé (Foreign key)
+      return res.status(400).json({
+        success: false,
+        message: 'Erreur de relation : vérifiez les identifiants référencés'
+      });
+    }
+    
+    // Erreur de transaction timeout
+    if (error.message.includes('Transaction') || error.message.includes('timeout')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Timeout de la transaction. Réessayez dans quelques instants.',
+        error: error.message
+      });
+    }
+    
+    // Erreur générique
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la création du candidat',
-      error: error.message
+      error: error.message,
+      hint: 'Aucun enregistrement n\'a été créé (transaction annulée).'
     });
   }
 };
