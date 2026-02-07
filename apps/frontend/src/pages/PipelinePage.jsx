@@ -18,6 +18,7 @@ const PipelinePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const scrollContainerRef = React.useRef(null);
+  const autoScrollIntervalRef = React.useRef(null);
 
   // Configuration des colonnes selon le workflow suisse (CDC 6.2)
   const COLUMNS = {
@@ -118,65 +119,6 @@ const PipelinePage = () => {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [loading]);
 
-  // ═══════════════════════════════════════════════════════════════
-  // AUTO-SCROLL pendant le Drag & Drop (UX Premium)
-  // ═══════════════════════════════════════════════════════════════
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    let animationFrameId = null;
-
-    const autoScroll = (e) => {
-      if (!e.clientX) return;
-
-      const containerRect = container.getBoundingClientRect();
-      const mouseX = e.clientX;
-      
-      // Zone de déclenchement : 100px des bords
-      const EDGE_SIZE = 100;
-      const SCROLL_SPEED = 15; // pixels par frame
-
-      // Scroll vers la droite si proche du bord droit
-      if (mouseX > containerRect.right - EDGE_SIZE) {
-        const intensity = (mouseX - (containerRect.right - EDGE_SIZE)) / EDGE_SIZE;
-        container.scrollLeft += SCROLL_SPEED * intensity;
-      }
-      
-      // Scroll vers la gauche si proche du bord gauche
-      if (mouseX < containerRect.left + EDGE_SIZE) {
-        const intensity = (containerRect.left + EDGE_SIZE - mouseX) / EDGE_SIZE;
-        container.scrollLeft -= SCROLL_SPEED * intensity;
-      }
-
-      animationFrameId = requestAnimationFrame(() => autoScroll(e));
-    };
-
-    const handleDragStart = () => {
-      document.addEventListener('mousemove', handleMouseMove);
-    };
-
-    const handleMouseMove = (e) => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      autoScroll(e);
-    };
-
-    const handleDragEnd = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-
-    // Écouter les événements de drag de @hello-pangea/dnd
-    document.addEventListener('dragstart', handleDragStart);
-    document.addEventListener('dragend', handleDragEnd);
-
-    return () => {
-      document.removeEventListener('dragstart', handleDragStart);
-      document.removeEventListener('dragend', handleDragEnd);
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
-
   const fetchCandidates = async () => {
     try {
       setLoading(true);
@@ -234,9 +176,80 @@ const PipelinePage = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════
+  // AUTO-SCROLL INTELLIGENT pendant Drag (@hello-pangea/dnd hooks)
+  // ═══════════════════════════════════════════════════════════════
+  const onDragStart = (start) => {
+    console.log('🎬 Drag démarré:', start.draggableId);
+    
+    // Tracker la position de la souris en continu
+    const trackMouse = (e) => {
+      window.dragMouseX = e.clientX;
+    };
+    
+    document.addEventListener('mousemove', trackMouse);
+    
+    // Fonction d'auto-scroll
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    const performAutoScroll = () => {
+      const mouseX = window.dragMouseX;
+      if (!mouseX) return;
+      
+      const rect = container.getBoundingClientRect();
+      const EDGE_ZONE = 150; // Zone de déclenchement (150px des bords)
+      const MAX_SPEED = 20;   // Vitesse max de scroll
+      
+      let scrollAmount = 0;
+      
+      // DROITE : Si souris proche du bord droit
+      if (mouseX > rect.right - EDGE_ZONE && mouseX < rect.right) {
+        const proximity = (mouseX - (rect.right - EDGE_ZONE)) / EDGE_ZONE;
+        scrollAmount = MAX_SPEED * proximity;
+        console.log(`→ Auto-scroll DROITE (${scrollAmount.toFixed(1)}px)`);
+      }
+      
+      // GAUCHE : Si souris proche du bord gauche
+      else if (mouseX < rect.left + EDGE_ZONE && mouseX > rect.left) {
+        const proximity = ((rect.left + EDGE_ZONE) - mouseX) / EDGE_ZONE;
+        scrollAmount = -MAX_SPEED * proximity;
+        console.log(`← Auto-scroll GAUCHE (${scrollAmount.toFixed(1)}px)`);
+      }
+      
+      if (scrollAmount !== 0) {
+        container.scrollLeft += scrollAmount;
+      }
+    };
+    
+    // Démarrer l'interval d'auto-scroll (60fps)
+    autoScrollIntervalRef.current = setInterval(performAutoScroll, 16);
+    
+    // Fonction de cleanup
+    window.cleanupDragTracking = () => {
+      document.removeEventListener('mousemove', trackMouse);
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+        autoScrollIntervalRef.current = null;
+      }
+      delete window.dragMouseX;
+    };
+  };
+
+  const onDragUpdate = (update) => {
+    // Hook appelé à chaque mouvement, utile pour debug
+    // L'auto-scroll est géré par l'interval dans onDragStart
+  };
+
+  // ═══════════════════════════════════════════════════════════════
   // Gestion du Drag & Drop (UPDATE STATUT API)
   // ═══════════════════════════════════════════════════════════════
   const onDragEnd = async (result) => {
+    // Cleanup du tracking souris et auto-scroll
+    if (window.cleanupDragTracking) {
+      window.cleanupDragTracking();
+      delete window.cleanupDragTracking;
+    }
+
     const { destination, source, draggableId } = result;
 
     // Pas de destination ou drop au même endroit
@@ -360,7 +373,11 @@ const PipelinePage = () => {
 
   return (
     <div className="h-[calc(100vh-140px)] w-full font-sans relative">
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DragDropContext 
+        onDragStart={onDragStart}
+        onDragUpdate={onDragUpdate}
+        onDragEnd={onDragEnd}
+      >
         {/* Container avec scroll horizontal fluide et ombres latérales */}
         <div 
           ref={scrollContainerRef}
