@@ -260,6 +260,17 @@ exports.createCandidate = async (req, res) => {
         }
       });
 
+      // ✨ CRÉER UNE APPLICATION PAR DÉFAUT (pour que le Pipeline fonctionne)
+      const newApplication = await tx.application.create({
+        data: {
+          candidateId: newCandidate.id,
+          status: 'NEW', // Par défaut, le candidat arrive dans "Nouveaux"
+          readinessStatus: 'INCOMPLETE',
+          priority: 'MEDIUM',
+          source: 'CRM' // Peut être changé dynamiquement plus tard
+        }
+      });
+
       // Créer le profil de solvabilité si fourni
       let newProfile = null;
       if (solvencyProfile) {
@@ -273,10 +284,10 @@ exports.createCandidate = async (req, res) => {
         });
       }
 
-      return { candidate: newCandidate, profile: newProfile };
+      return { candidate: newCandidate, application: newApplication, profile: newProfile };
     });
 
-    console.log(`✅ Candidat créé: ${result.candidate.firstName} ${result.candidate.lastName}`);
+    console.log(`✅ Candidat créé: ${result.candidate.firstName} ${result.candidate.lastName} (Application ${result.application.id})`);
 
     res.status(201).json({
       success: true,
