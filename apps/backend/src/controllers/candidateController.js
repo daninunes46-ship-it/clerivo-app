@@ -441,7 +441,13 @@ exports.updateCandidate = async (req, res) => {
 
 /**
  * DELETE /api/candidates/:id
- * Supprime un candidat (soft delete)
+ * Supprime un candidat (soft delete) + ses applications
+ * 
+ * COMPORTEMENT V1:
+ * - Soft-delete toutes les applications liées (même actives)
+ * - Soft-delete le candidat
+ * - Conserve les documents (DataVault)
+ * - Log audit pour traçabilité
  */
 exports.deleteCandidate = async (req, res) => {
   try {
@@ -462,45 +468,56 @@ exports.deleteCandidate = async (req, res) => {
       });
     }
 
-    // Vérifier s'il y a des candidatures actives
-    const hasActiveApplications = candidate.applications.some(
-      app => !['REJECTED', 'ARCHIVED', 'WITHDRAWN'].includes(app.status)
-    );
+    console.log(`🗑️ Suppression candidat: ${candidate.firstName} ${candidate.lastName}`);
+    console.log(`   Applications liées: ${candidate.applications.length}`);
 
-    if (hasActiveApplications) {
-      return res.status(400).json({
-        success: false,
-        message: 'Impossible de supprimer un candidat avec des candidatures actives'
+    // ═══════════════════════════════════════════════════════════════
+    // TRANSACTION ATOMIQUE (soft-delete Applications + Candidate)
+    // ═══════════════════════════════════════════════════════════════
+    const result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      
+      // 1. Soft-delete toutes les applications liées
+      const deletedApps = await tx.application.updateMany({
+        where: { 
+          candidateId: id,
+          deletedAt: null // Seulement celles non déjà supprimées
+        },
+        data: { deletedAt: now }
       });
-    }
+      
+      console.log(`   ✅ ${deletedApps.count} application(s) soft-deleted`);
 
-    // Soft delete
-    const deletedCandidate = await prisma.candidate.update({
-      where: { id },
-      data: {
-        deletedAt: new Date()
-      }
-    });
-
-    // Créer un log d'audit
-    await prisma.auditLog.create({
-      data: {
-        action: 'DELETE',
-        entityType: 'Candidate',
-        entityId: id,
-        changes: JSON.stringify({
-          deletedAt: new Date(),
-          name: `${candidate.firstName} ${candidate.lastName}`
-        })
-      }
+      // 2. Soft-delete le candidat
+      const deletedCandidate = await tx.candidate.update({
+        where: { id },
+        data: { deletedAt: now }
+      });
+      
+      // 3. Log d'audit
+      await tx.auditLog.create({
+        data: {
+          action: 'DELETE',
+          entityType: 'Candidate',
+          entityId: id,
+          changes: JSON.stringify({
+            deletedAt: now,
+            name: `${candidate.firstName} ${candidate.lastName}`,
+            applicationsDeleted: deletedApps.count
+          })
+        }
+      });
+      
+      return { candidate: deletedCandidate, applicationsCount: deletedApps.count };
     });
 
     console.log(`✅ Candidat supprimé (soft delete): ${candidate.firstName} ${candidate.lastName}`);
+    console.log(`   + ${result.applicationsCount} application(s) archivée(s)`);
 
     res.json({
       success: true,
       message: 'Candidat supprimé avec succès',
-      data: deletedCandidate
+      data: result.candidate
     });
 
   } catch (error) {
