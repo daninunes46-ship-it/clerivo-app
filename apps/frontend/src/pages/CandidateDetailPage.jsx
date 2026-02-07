@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Shield, AlertTriangle, CheckCircle, FileText, 
   Mail, Phone, MapPin, UploadCloud, Clock, Calendar, 
-  Download, Eye, MoreHorizontal, UserCheck, Briefcase, Loader2
+  Download, Eye, MoreHorizontal, UserCheck, Briefcase, Loader2, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -111,6 +111,28 @@ const CandidateDetailPage = () => {
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // États pour le menu Action
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const actionMenuRef = useRef(null);
+
+  // Fermer le menu au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setIsActionMenuOpen(false);
+      }
+    };
+    
+    if (isActionMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isActionMenuOpen]);
 
   // 🔍 Debug: Log de l'ID au chargement
   useEffect(() => {
@@ -367,6 +389,80 @@ const CandidateDetailPage = () => {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // SUPPRESSION DU CANDIDAT (avec confirmation)
+  // ═══════════════════════════════════════════════════════════════
+  const handleDeleteCandidate = async () => {
+    // Confirmation utilisateur (native pour la V1)
+    const confirmed = window.confirm(
+      `⚠️ SUPPRESSION DÉFINITIVE\n\n` +
+      `Êtes-vous sûr de vouloir supprimer le candidat "${candidate.firstName} ${candidate.lastName}" ?\n\n` +
+      `Cette action supprimera :\n` +
+      `• Le profil candidat\n` +
+      `• L'application associée (soft delete)\n` +
+      `• Les documents (conservation DataVault)\n\n` +
+      `Cette action est IRRÉVERSIBLE.`
+    );
+    
+    if (!confirmed) {
+      console.log('❌ Suppression annulée par l\'utilisateur');
+      setIsActionMenuOpen(false);
+      return;
+    }
+    
+    try {
+      setIsDeleting(true);
+      setIsActionMenuOpen(false);
+      
+      console.log('🗑️ Début suppression candidat:', id);
+      
+      // Appel API DELETE
+      const response = await fetch(`${API_URL}/api/candidates/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('📥 Réponse DELETE:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Erreur inconnue' }));
+        throw new Error(errorData.message || `Erreur HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ Candidat supprimé:', data.data);
+        
+        // Toast de succès
+        toast.success('Candidat supprimé avec succès', {
+          description: `${candidate.firstName} ${candidate.lastName} a été supprimé du système.`,
+          duration: 4000
+        });
+        
+        // Redirection immédiate vers le Pipeline
+        setTimeout(() => {
+          navigate('/pipeline', { replace: true });
+        }, 500);
+        
+      } else {
+        throw new Error(data.message || 'Échec de la suppression');
+      }
+      
+    } catch (err) {
+      console.error('❌ ERREUR SUPPRESSION:', err);
+      
+      toast.error('Erreur de suppression', {
+        description: err.message || 'Impossible de supprimer le candidat.',
+        duration: 5000
+      });
+      
+      setIsDeleting(false);
+    }
+  };
+
   // Affichage loading
   if (loading) {
     return (
@@ -439,9 +535,65 @@ const CandidateDetailPage = () => {
           <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm font-medium hover:bg-zinc-50 text-zinc-700 shadow-sm">
              <Mail size={16} /> Contacter
           </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white border border-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-800 shadow-sm">
-             Action
-          </button>
+          
+          {/* Menu Action Déroulant */}
+          <div className="relative" ref={actionMenuRef}>
+            <button 
+              onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+              disabled={isDeleting}
+              className={`
+                flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-medium shadow-sm transition-all
+                ${isDeleting 
+                  ? 'bg-zinc-300 border-zinc-300 text-zinc-500 cursor-not-allowed' 
+                  : 'bg-zinc-900 text-white border-zinc-900 hover:bg-zinc-800'
+                }
+              `}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <MoreHorizontal size={16} />
+                  Actions
+                </>
+              )}
+            </button>
+            
+            {/* Dropdown Menu */}
+            {isActionMenuOpen && !isDeleting && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-zinc-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <button
+                  onClick={handleDeleteCandidate}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 transition-colors flex items-center gap-2 text-red-600 font-medium"
+                >
+                  <Trash2 size={16} />
+                  Supprimer le candidat
+                </button>
+                
+                {/* Séparateur */}
+                <div className="h-px bg-zinc-100 my-1"></div>
+                
+                {/* Autres actions futures */}
+                <button
+                  disabled
+                  className="w-full px-4 py-2 text-left text-sm text-zinc-400 cursor-not-allowed flex items-center gap-2"
+                >
+                  <Clock size={16} />
+                  Archiver (V1.1)
+                </button>
+                <button
+                  disabled
+                  className="w-full px-4 py-2 text-left text-sm text-zinc-400 cursor-not-allowed flex items-center gap-2"
+                >
+                  <Download size={16} />
+                  Exporter PDF (V1.1)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

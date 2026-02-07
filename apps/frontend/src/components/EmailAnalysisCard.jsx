@@ -109,7 +109,14 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
         console.log(`👤 Nom extrait: ${firstName} ${lastName}`);
         
         // ───────────────────────────────────────────────────────────────
-        // EXTRACTION REVENU (100% SAFE)
+        // EXTRACTION REVENU (FORMATS SUISSES ROBUSTES)
+        // ───────────────────────────────────────────────────────────────
+        // Formats supportés :
+        // - "7500" / "7500 CHF" / "CHF 7500"
+        // - "7'500" / "7'500 CHF" (apostrophe séparateur de milliers)
+        // - "7.500" / "7.500 CHF" (point séparateur de milliers)
+        // - "7 500" / "7 500 CHF" (espace séparateur)
+        // - "7'500.-" / "7'500.–" (notation bancaire suisse)
         // ───────────────────────────────────────────────────────────────
         let monthlyIncome = null;
         
@@ -118,33 +125,75 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
           const sources = [
             entities?.budget,
             entities?.income,
-            entities?.salary
+            entities?.salary,
+            entities?.revenue, // Parfois l'IA utilise ce champ
+            entities?.monthlyIncome // Ou celui-ci
           ];
+          
+          console.log('🔍 Scanning income sources:', sources.filter(Boolean));
           
           for (const source of sources) {
             // Guard : Vérifier que c'est une string
             if (!source || typeof source !== 'string') continue;
             
-            // Regex pour montants suisses : "2400", "2'400", "CHF 2400", etc.
+            console.log(`   📊 Analysing: "${source}"`);
+            
+            // ─────────────────────────────────────────────────────────
+            // ÉTAPE 1 : EXTRACTION DU MONTANT (avec tous les séparateurs)
+            // ─────────────────────────────────────────────────────────
+            // Regex ultra-permissive : capture n'importe quel groupe de chiffres
+            // avec séparateurs optionnels (apostrophe, point, espace)
+            // Exemples matchés : "7'500", "7.500", "7 500", "7500"
             const match = source.match(/(\d[\d'\.\s]*\d|\d+)/);
             
             if (match && match[1]) {
-              // Nettoyage : supprimer séparateurs suisses
-              const cleaned = match[1].replace(/['.\s]/g, '');
+              const rawNumber = match[1];
+              console.log(`      → Montant brut capturé: "${rawNumber}"`);
+              
+              // ─────────────────────────────────────────────────────────
+              // ÉTAPE 2 : NETTOYAGE (supprimer TOUS les séparateurs)
+              // ─────────────────────────────────────────────────────────
+              // On supprime : apostrophes ('), points (.), espaces, tirets (.-)
+              // On garde : UNIQUEMENT les chiffres
+              const cleaned = rawNumber
+                .replace(/['.\s\-–]/g, '') // Supprimer séparateurs suisses
+                .replace(/[^\d]/g, '');     // Supprimer tout ce qui n'est pas un chiffre
+              
+              console.log(`      → Montant nettoyé: "${cleaned}"`);
+              
+              // ─────────────────────────────────────────────────────────
+              // ÉTAPE 3 : CONVERSION & VALIDATION
+              // ─────────────────────────────────────────────────────────
               const number = parseInt(cleaned, 10);
               
-              // Validation : Revenu mensuel plausible (1k - 50k CHF)
-              if (!isNaN(number) && number >= 1000 && number <= 50000) {
-                monthlyIncome = number;
-                console.log(`💰 Revenu extrait: ${monthlyIncome} CHF (de "${source}")`);
-                break;
-              } else if (number > 50000) {
-                console.log(`⚠️ Montant ${number} ignoré (trop élevé = budget achat)`);
+              if (isNaN(number)) {
+                console.log(`      ✗ NaN après parsing`);
+                continue;
               }
+              
+              console.log(`      → Montant converti: ${number} CHF`);
+              
+              // Validation : Revenu mensuel plausible (1'000 - 50'000 CHF)
+              if (number >= 1000 && number <= 50000) {
+                monthlyIncome = number;
+                console.log(`      ✅ REVENU VALIDÉ: ${monthlyIncome} CHF (source: "${source}")`);
+                break; // On a trouvé, on arrête
+              } else if (number > 50000) {
+                console.log(`      ⚠️ Montant ${number} CHF ignoré (trop élevé = probablement un budget d'achat immobilier)`);
+              } else if (number < 1000) {
+                console.log(`      ⚠️ Montant ${number} CHF ignoré (trop faible = probablement une erreur)`);
+              }
+            } else {
+              console.log(`      ✗ Aucun montant détecté dans "${source}"`);
             }
           }
+          
+          if (monthlyIncome === null) {
+            console.log('   ⚠️ Aucun revenu valide extrait des sources disponibles');
+          }
         } catch (incomeError) {
-          console.error('⚠️ Erreur extraction revenu:', incomeError);
+          console.error('⚠️ ERREUR CRITIQUE extraction revenu:', incomeError);
+          console.error('   Stack:', incomeError.stack);
           // monthlyIncome reste null
         }
         
