@@ -17,6 +17,7 @@ const PipelinePage = () => {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const scrollContainerRef = React.useRef(null);
 
   // Configuration des colonnes selon le workflow suisse (CDC 6.2)
   const COLUMNS = {
@@ -90,6 +91,32 @@ const PipelinePage = () => {
       window.removeEventListener('candidateAdded', handleCandidateAdded);
     };
   }, []);
+
+  // Gérer l'affichage des ombres latérales selon le scroll
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const scrollLeft = container.scrollLeft;
+      const scrollWidth = container.scrollWidth;
+      const clientWidth = container.clientWidth;
+      
+      // Calculer l'opacité des ombres (0 ou 1)
+      const leftOpacity = scrollLeft > 10 ? 1 : 0;
+      const rightOpacity = scrollLeft + clientWidth >= scrollWidth - 10 ? 0 : 1;
+      
+      // Appliquer via CSS variables
+      container.style.setProperty('--shadow-left-opacity', leftOpacity);
+      container.style.setProperty('--shadow-right-opacity', rightOpacity);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    // Vérifier au chargement
+    handleScroll();
+
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [loading]);
 
   const fetchCandidates = async () => {
     try {
@@ -191,10 +218,49 @@ const PipelinePage = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-140px)] w-full font-sans">
+    <div className="h-[calc(100vh-140px)] w-full font-sans relative">
       <DragDropContext onDragEnd={onDragEnd}>
-        {/* Container responsive : Grid sur Desktop, Scroll Snap sur Mobile */}
-        <div className="flex md:grid md:grid-cols-5 gap-4 h-full overflow-x-auto md:overflow-visible snap-x snap-mandatory pb-4 md:pb-0 px-4 md:px-0 scroll-pl-4">
+        {/* Container avec scroll horizontal fluide et ombres latérales */}
+        <div 
+          ref={scrollContainerRef}
+          className="
+            h-full w-full 
+            overflow-x-auto overflow-y-hidden
+            scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent
+            relative
+            group
+          "
+        >
+          {/* Ombre gauche (indique contenu scrollé) */}
+          <div className="
+            absolute left-0 top-0 h-full w-12 
+            bg-gradient-to-r from-white via-white/50 to-transparent 
+            pointer-events-none 
+            opacity-0 
+            transition-opacity duration-300
+            z-10
+          " style={{ opacity: 'var(--shadow-left-opacity, 0)' }} />
+          
+          {/* Ombre droite (indique contenu masqué) */}
+          <div className="
+            absolute right-0 top-0 h-full w-12 
+            bg-gradient-to-l from-white via-white/50 to-transparent 
+            pointer-events-none 
+            opacity-100
+            transition-opacity duration-300
+            z-10
+          " style={{ opacity: 'var(--shadow-right-opacity, 1)' }} />
+          
+          {/* Wrapper colonnes : Flex sur mobile/tablet, Grid sur desktop large */}
+          <div className="
+            flex 
+            gap-4 
+            h-full 
+            min-w-max 
+            px-4 pb-4
+            
+            xl:grid xl:grid-cols-5 xl:min-w-0 xl:px-0
+          ">
           
           {COLUMN_ORDER.map((columnId) => {
             const column = COLUMNS[columnId];
@@ -220,6 +286,7 @@ const PipelinePage = () => {
             );
           })}
           
+        </div>
         </div>
       </DragDropContext>
     </div>

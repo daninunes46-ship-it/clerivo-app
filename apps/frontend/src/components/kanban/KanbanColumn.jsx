@@ -3,7 +3,19 @@ import { Droppable } from '@hello-pangea/dnd';
 
 const KanbanColumn = ({ columnId, title, count, colorClass, children }) => {
   return (
-    <div className="flex-shrink-0 w-[80vw] md:w-auto md:flex-1 flex flex-col h-full max-h-full snap-center">
+    <div className="
+      flex-shrink-0 
+      w-[90vw]           
+      snap-center        
+      
+      md:w-[280px]       
+      md:snap-align-none 
+      
+      xl:w-auto          
+      xl:flex-shrink     
+      
+      flex flex-col h-full max-h-full
+    ">
       {/* Header de colonne */}
       <div className={`flex items-center justify-between p-3 rounded-t-xl border-b-2 bg-zinc-50 ${colorClass.border}`}>
         <h3 className={`font-bold text-sm uppercase tracking-wide ${colorClass.text}`}>

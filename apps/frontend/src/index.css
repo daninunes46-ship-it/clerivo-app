@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════
+   CLERIVO - Custom Scrollbar (Apple-like)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Scrollbar ultra-discrète pour Pipeline Kanban */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d4d4d8; /* zinc-300 */
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa; /* zinc-400 */
+}
+
+/* Firefox scrollbar (plus limité mais fonctionnel) */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+
+/* Scroll behavior fluide (smooth scroll) */
+.scrollbar-thin {
+  scroll-behavior: smooth;
+}
+
