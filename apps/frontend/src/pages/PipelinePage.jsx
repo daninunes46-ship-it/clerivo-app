@@ -183,18 +183,37 @@ const PipelinePage = () => {
 
   // ═══════════════════════════════════════════════════════════════
   // AUTO-SCROLL INTELLIGENT pendant Drag (@hello-pangea/dnd hooks)
+  // V1.1: Support SOURIS + TACTILE (Mobile)
   // ═══════════════════════════════════════════════════════════════
   const onDragStart = (start) => {
     console.log('🎬 Drag démarré:', start.draggableId);
     
-    // Tracker la position de la souris en continu
+    // ───────────────────────────────────────────────────────────
+    // TRACKING POSITION : Souris (Desktop) + Touch (Mobile)
+    // ───────────────────────────────────────────────────────────
+    
     const trackMouse = (e) => {
       window.dragMouseX = e.clientX;
     };
     
-    document.addEventListener('mousemove', trackMouse);
+    const trackTouch = (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const touch = e.touches[0];
+        window.dragMouseX = touch.clientX; // Utilise la même variable pour uniformité
+        
+        // Empêcher le scroll natif pendant le drag (optionnel, peut créer des conflits)
+        // e.preventDefault(); // DÉSACTIVÉ pour éviter de bloquer le scroll manuel
+      }
+    };
     
-    // Fonction d'auto-scroll
+    // Écouter les deux types d'événements
+    document.addEventListener('mousemove', trackMouse, { passive: true });
+    document.addEventListener('touchmove', trackTouch, { passive: true }); // V1.1: NOUVEAU
+    
+    // ───────────────────────────────────────────────────────────
+    // AUTO-SCROLL INTELLIGENT (même logique Souris + Touch)
+    // ───────────────────────────────────────────────────────────
+    
     const container = scrollContainerRef.current;
     if (!container) return;
     
@@ -208,14 +227,14 @@ const PipelinePage = () => {
       
       let scrollAmount = 0;
       
-      // DROITE : Si souris proche du bord droit
+      // DROITE : Si curseur/doigt proche du bord droit
       if (mouseX > rect.right - EDGE_ZONE && mouseX < rect.right) {
         const proximity = (mouseX - (rect.right - EDGE_ZONE)) / EDGE_ZONE;
         scrollAmount = MAX_SPEED * proximity;
         console.log(`→ Auto-scroll DROITE (${scrollAmount.toFixed(1)}px)`);
       }
       
-      // GAUCHE : Si souris proche du bord gauche
+      // GAUCHE : Si curseur/doigt proche du bord gauche
       else if (mouseX < rect.left + EDGE_ZONE && mouseX > rect.left) {
         const proximity = ((rect.left + EDGE_ZONE) - mouseX) / EDGE_ZONE;
         scrollAmount = -MAX_SPEED * proximity;
@@ -230,14 +249,21 @@ const PipelinePage = () => {
     // Démarrer l'interval d'auto-scroll (60fps)
     autoScrollIntervalRef.current = setInterval(performAutoScroll, 16);
     
-    // Fonction de cleanup
+    // ───────────────────────────────────────────────────────────
+    // CLEANUP FUNCTION (Nettoie Souris + Touch)
+    // ───────────────────────────────────────────────────────────
+    
     window.cleanupDragTracking = () => {
       document.removeEventListener('mousemove', trackMouse);
+      document.removeEventListener('touchmove', trackTouch); // V1.1: NOUVEAU
+      
       if (autoScrollIntervalRef.current) {
         clearInterval(autoScrollIntervalRef.current);
         autoScrollIntervalRef.current = null;
       }
+      
       delete window.dragMouseX;
+      console.log('🧹 Cleanup drag tracking (souris + tactile)');
     };
   };
 
