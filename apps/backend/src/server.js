@@ -16,13 +16,34 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0'; // Écoute sur toutes les interfaces
 
 app.use((req, res, next) => {
-  console.log(`[Backend] ${req.method} ${req.url}`);
+  console.log(`[Backend] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'no-origin'}`);
   next();
 });
 
-// 🌐 Configuration CORS permissive (pour tunnel Cloudflare + mobile)
+// 🌐 Configuration CORS STRICTE pour Production
+const allowedOrigins = [
+  'https://clerivo.ch',                    // Frontend Vercel (domaine principal)
+  'https://www.clerivo.ch',                // Frontend Vercel avec www (CRITIQUE !)
+  'https://app.clerivo.ch',                // Application via tunnel Cloudflare
+  'https://clerivo-frontend.vercel.app',   // URL native Vercel (backup)
+  'http://localhost:5173',                 // Dev local Vite
+  'http://localhost:3010',                 // Dev local Backend
+  'http://192.168.1.212:3010',            // Réseau local (votre Pi)
+  'http://192.168.1.107:3010'             // Réseau local WiFi
+];
+
 const corsOptions = {
-  origin: true, // Accepte toutes les origines en développement
+  origin: (origin, callback) => {
+    // Autoriser les requêtes sans origin (Postman, curl, mobile apps)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ CORS bloqué pour origin: ${origin}`);
+      callback(new Error(`Origin ${origin} non autorisée par CORS`));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -66,46 +87,48 @@ console.log('✅ AI routes mounted');
 app.use('/api/candidates', candidateRoutes);
 console.log('✅ Candidate routes mounted (including upload endpoint)');
 
-// 📦 Servir le frontend (build Vite)
-const frontendPath = path.join(__dirname, '../../frontend/dist');
-console.log('📂 Serving frontend from:', frontendPath);
-app.use(express.static(frontendPath));
-
-// Route catch-all : servir index.html pour toutes les routes non-API (SPA routing)
-app.get('*', (req, res, next) => {
-  // Si c'est une route API, passer au middleware suivant
-  if (req.path.startsWith('/api/')) {
-    return next();
-  }
-  // Sinon, servir index.html (React Router gère le routing côté client)
-  res.sendFile(path.join(frontendPath, 'index.html'));
-});
-
-// 🛡️ Middleware de gestion des erreurs (doit être APRÈS les routes)
-app.use((err, req, res, next) => {
-  console.error('❌ Erreur serveur:', err.message);
-  console.error(err.stack);
-  
-  // Renvoyer TOUJOURS du JSON (pas du HTML)
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Erreur serveur interne',
-    error: process.env.NODE_ENV === 'production' ? {} : err.stack
-  });
-});
-
-// 🛡️ Handler 404 pour routes API inexistantes
+// 🛡️ Handler 404 pour routes API inexistantes (AVANT le catch-all frontend)
 app.use('/api/*', (req, res) => {
+  console.error(`❌ Route API non trouvée: ${req.method} ${req.path}`);
   res.status(404).json({
     success: false,
     message: `Route API non trouvée: ${req.method} ${req.path}`
   });
 });
 
+// 🛡️ Middleware de gestion des erreurs API (AVANT le catch-all frontend)
+app.use((err, req, res, next) => {
+  // Si c'est une route API, renvoyer JSON
+  if (req.path.startsWith('/api/')) {
+    console.error('❌ Erreur API:', err.message);
+    console.error(err.stack);
+    
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || 'Erreur serveur interne',
+      error: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
+  }
+  
+  // Sinon, passer au middleware suivant (frontend)
+  next(err);
+});
+
+// 📦 Servir le frontend (build Vite) - APRÈS les routes API
+const frontendPath = path.join(__dirname, '../../frontend/dist');
+console.log('📂 Serving frontend from:', frontendPath);
+app.use(express.static(frontendPath));
+
+// Route catch-all : servir index.html pour le SPA (DOIT être en dernier)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
 // Démarrage du serveur
 app.listen(PORT, HOST, () => {
   console.log(`\n🚀 [CLERIVO] Server running on http://${HOST}:${PORT}`);
   console.log(`📍 Local: http://localhost:${PORT}`);
-  console.log(`📍 Network: http://192.168.1.250:${PORT}`);
+  console.log(`📍 Cloudflare Tunnel: https://app.clerivo.ch`);
+  console.log(`📍 Frontend: https://clerivo.ch`);
   console.log(`📤 Upload endpoint: POST /api/candidates/:id/documents\n`);
 });
