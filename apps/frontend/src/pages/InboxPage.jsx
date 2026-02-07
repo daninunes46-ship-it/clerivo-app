@@ -9,15 +9,6 @@ import SmartBadge from '../components/SmartBadge';
 // 🌐 URL API : Utilise la variable d'environnement ou proxy Vite
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// #region agent log
-console.log('🔍 [DEBUG] API_URL initialized:', {
-  API_URL,
-  VITE_API_URL: import.meta.env.VITE_API_URL,
-  allEnvVars: import.meta.env,
-  hypothesisId: 'A,D'
-});
-// #endregion
-
 const InboxPage = () => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,50 +34,13 @@ const InboxPage = () => {
   const fetchEmails = async () => {
     try {
       setLoading(true);
-      // #region agent log
-      const fullUrl = `${API_URL}/api/emails`;
-      console.log('🔍 [DEBUG] About to fetch emails:', {
-        API_URL,
-        fullUrl,
-        windowOrigin: window.location.origin,
-        hypothesisId: 'A,C'
-      });
-      // #endregion
-      const response = await fetch(fullUrl);
-      
-      // #region agent log
-      console.log('🔍 [DEBUG] Fetch response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type'),
-        url: response.url,
-        ok: response.ok,
-        hypothesisId: 'B,E'
-      });
-      // #endregion
+      const response = await fetch(`${API_URL}/api/emails`);
       
       if (!response.ok) {
-        // #region agent log
-        const responseText = await response.text();
-        console.error('🔍 [DEBUG] Response not OK - captured body:', {
-          status: response.status,
-          responseText: responseText.substring(0, 500),
-          isHTML: responseText.startsWith('<'),
-          hypothesisId: 'B,E'
-        });
-        // #endregion
         throw new Error('Erreur réseau lors de la récupération des emails');
       }
       
       const data = await response.json();
-      // #region agent log
-      console.log('🔍 [DEBUG] JSON parsed successfully:', {
-        success: data.success,
-        dataLength: data.data?.length,
-        keys: Object.keys(data),
-        hypothesisId: 'E'
-      });
-      // #endregion
       if (data.success) {
         // Mapper les données API vers le format UI
         const formattedEmails = data.data.map(email => ({
@@ -110,14 +64,6 @@ const InboxPage = () => {
       }
     } catch (err) {
       console.error("Erreur fetch emails:", err);
-      // #region agent log
-      console.error('🔍 [DEBUG] CATCH block - error occurred:', {
-        errorMessage: err.message,
-        errorName: err.name,
-        errorStack: err.stack?.substring(0, 300),
-        hypothesisId: 'A,B,C'
-      });
-      // #endregion
       setError(err.message);
     } finally {
       setLoading(false);
