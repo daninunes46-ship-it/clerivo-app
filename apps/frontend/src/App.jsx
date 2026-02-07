@@ -61,7 +61,6 @@ function AppContent() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
           </Routes>
-          <Toaster richColors position="top-right" closeButton />
         </>
       ) : (
         <Layout>
@@ -85,7 +84,6 @@ function AppContent() {
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <Toaster richColors position="top-right" closeButton />
         </Layout>
       )}
     </>
@@ -96,6 +94,8 @@ function App() {
   return (
     <AuthProvider>
       <AppContent />
+      {/* Toaster global unique (évite les conflits DOM) */}
+      <Toaster richColors position="top-right" closeButton />
     </AuthProvider>
   );
 }

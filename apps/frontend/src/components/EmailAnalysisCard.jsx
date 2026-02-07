@@ -29,68 +29,136 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
   const { classification, sentiment, entities, summary } = analysis;
 
   const handleAddToCRM = async () => {
-    if (added) return;
+    // Guard : Si déjà ajouté, ne rien faire
+    if (added) {
+      console.log('✅ Candidat déjà marqué comme ajouté, action ignorée.');
+      return;
+    }
+
     setAdding(true);
 
     try {
-        // Préparation des données pour le CRM (Mapping IA -> Candidat)
+        console.log('🚀 Début de l\'ajout au CRM...');
+        
+        // Préparation sécurisée des données
         const nameParts = (entities?.client_name || emailData?.from || 'Inconnu').split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ') || 'Inconnu';
+        const firstName = nameParts[0] || 'Inconnu';
+        const lastName = nameParts.slice(1).join(' ') || 'N/A';
         
         // Extraction du budget pour le revenu (simpliste pour la démo)
         let monthlyIncome = null;
         if (entities?.budget) {
             const numbers = entities.budget.match(/\d+/g);
-            if (numbers) monthlyIncome = parseInt(numbers.join(''));
+            if (numbers && numbers.length > 0) {
+                monthlyIncome = parseInt(numbers.join(''));
+            }
         }
 
         const payload = {
             firstName,
             lastName,
             email: emailData?.email || 'no-email@detected.com',
-            phone: entities?.phone,
+            phone: entities?.phone || null,
             monthlyIncome: monthlyIncome,
-            // On ajoute une note ou un tag pour dire que ça vient de l'IA
-            notes: `Lead capturé depuis l'email. Résumé IA: ${summary}`,
-            // Pour le pipeline "Nouveaux"
-            status: 'NEW' 
+            notes: `Lead capturé depuis l'email. Résumé IA: ${summary || 'N/A'}`,
+            status: 'NEW'
         };
 
-        // Appel API (qui alimente le Pipeline)
+        console.log('📤 Envoi du payload:', payload);
+
+        // Appel API avec timeout de sécurité
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
         const response = await fetch(`${API_URL}/api/candidates`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal
         });
 
-        // 1. Gérer le cas Spécifique 409 D'ABORD
+        clearTimeout(timeoutId);
+
+        console.log('📥 Réponse API - Status:', response.status);
+
+        // 1. GÉRER LE CAS 409 (DOUBLON) EN PRIORITÉ
         if (response.status === 409) {
-             toast.info("Candidat déjà existant", {
-                description: "Ce contact est déjà présent dans le pipeline."
-             });
-             setAdded(true);
-             return; // Stop here, handled gracefully
+            console.log('ℹ️ Candidat déjà existant (409)');
+            setAdded(true);
+            
+            // Toast sécurisé avec délai pour éviter conflit DOM
+            setTimeout(() => {
+                toast.info("⚠️ Candidat déjà existant", {
+                    description: "Ce contact est déjà présent dans le pipeline.",
+                    duration: 3000
+                });
+            }, 100);
+            
+            return; // STOP ICI - Succès UX
         }
 
-        // 2. Ensuite gérer les autres erreurs
-        if (!response.ok) throw new Error('Erreur API');
+        // 2. GÉRER LES AUTRES ERREURS HTTP
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erreur HTTP:', response.status, errorText);
+            throw new Error(`Erreur ${response.status}: ${errorText}`);
+        }
 
-        const data = await response.json();
+        // 3. PARSER LA RÉPONSE JSON
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('❌ Erreur parsing JSON:', parseError);
+            throw new Error('Réponse API invalide');
+        }
 
+        console.log('✅ Réponse parsée:', data);
+
+        // 4. VALIDER LE SUCCÈS
         if (data.success) {
             setAdded(true);
-            toast.success("Candidat ajouté au Pipeline !", {
-                description: `${firstName} ${lastName} est maintenant dans la colonne "Nouveaux".`
-            });
+            
+            // Toast de succès avec délai
+            setTimeout(() => {
+                toast.success("✅ Candidat ajouté au Pipeline !", {
+                    description: `${firstName} ${lastName} est dans la colonne "Nouveaux".`,
+                    duration: 4000
+                });
+            }, 100);
+        } else {
+            throw new Error(data.message || 'Erreur inconnue');
         }
+
     } catch (err) {
-        console.error("Erreur Add CRM:", err);
-        toast.error("Impossible d'ajouter le candidat", {
-            description: "Vérifiez la console pour les détails."
-        });
+        console.error("❌ ERREUR handleAddToCRM:", err);
+        
+        // Gestion spécifique des erreurs réseau
+        if (err.name === 'AbortError') {
+            console.error('⏱️ Timeout de la requête');
+            setTimeout(() => {
+                toast.error("Timeout", {
+                    description: "Le serveur met trop de temps à répondre.",
+                    duration: 3000
+                });
+            }, 100);
+        } else {
+            setTimeout(() => {
+                toast.error("❌ Erreur d'ajout", {
+                    description: err.message || "Impossible de contacter le serveur.",
+                    duration: 4000
+                });
+            }, 100);
+        }
+        
+        // NE PAS marquer comme ajouté en cas d'erreur
+        // setAdded reste à false pour permettre un nouvel essai
     } finally {
         setAdding(false);
+        console.log('🏁 Fin du processus d\'ajout');
     }
   };
 
