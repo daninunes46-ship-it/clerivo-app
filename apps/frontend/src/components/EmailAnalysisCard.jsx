@@ -10,6 +10,28 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
 
+  // Helper : Construction de notes enrichies à partir de l'analyse IA
+  const buildEnrichedNotes = (summary, entities) => {
+    const parts = [
+      '🤖 Lead capturé automatiquement depuis l\'Inbox',
+      '',
+      '📝 Résumé IA:',
+      summary || 'N/A',
+      ''
+    ];
+
+    if (entities) {
+      parts.push('📊 Informations extraites:');
+      
+      if (entities.budget) parts.push(`• Budget/Revenu mentionné: ${entities.budget}`);
+      if (entities.location) parts.push(`• Localisation: ${entities.location}`);
+      if (entities.phone) parts.push(`• Téléphone: ${entities.phone}`);
+      if (entities.intent) parts.push(`• Intention: ${entities.intent}`);
+    }
+
+    return parts.join('\n');
+  };
+
   if (loading) {
     return (
       <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-sm animate-pulse">
@@ -39,32 +61,84 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
 
     try {
         console.log('🚀 Début de l\'ajout au CRM...');
+        console.log('📊 Données IA disponibles:', { entities, summary });
         
-        // Préparation sécurisée des données
-        const nameParts = (entities?.client_name || emailData?.from || 'Inconnu').split(' ');
-        const firstName = nameParts[0] || 'Inconnu';
-        const lastName = nameParts.slice(1).join(' ') || 'N/A';
+        // ═══════════════════════════════════════════════════════════════
+        // EXTRACTION INTELLIGENTE DU NOM (avec gestion des formats suisses)
+        // ═══════════════════════════════════════════════════════════════
+        let firstName = 'Inconnu';
+        let lastName = 'N/A';
         
-        // Extraction du budget pour le revenu (simpliste pour la démo)
-        let monthlyIncome = null;
-        if (entities?.budget) {
-            const numbers = entities.budget.match(/\d+/g);
-            if (numbers && numbers.length > 0) {
-                monthlyIncome = parseInt(numbers.join(''));
-            }
+        const fullName = entities?.client_name || emailData?.from || 'Inconnu';
+        
+        // Split intelligent : gère "M. Dupont Jean", "Jean Dupont", "DUPONT Jean"
+        const nameParts = fullName
+          .replace(/^(M\.|Mme|Mlle|Mr|Mrs|Ms)\.?\s*/i, '') // Retire les titres
+          .trim()
+          .split(/\s+/); // Split sur espaces multiples
+        
+        if (nameParts.length >= 2) {
+          firstName = nameParts[0];
+          lastName = nameParts.slice(1).join(' ');
+        } else if (nameParts.length === 1) {
+          firstName = nameParts[0];
+          lastName = 'N/A';
         }
-
+        
+        // ═══════════════════════════════════════════════════════════════
+        // EXTRACTION INTELLIGENTE DU REVENU (multi-formats)
+        // ═══════════════════════════════════════════════════════════════
+        let monthlyIncome = null;
+        
+        // Sources possibles : entities.budget, entities.income, ou mention dans summary
+        const budgetSources = [
+          entities?.budget,
+          entities?.income,
+          entities?.salary
+        ].filter(Boolean);
+        
+        for (const source of budgetSources) {
+          if (!source) continue;
+          
+          // Regex pour extraire les montants (formats suisses) :
+          // "2400", "2'400", "2.400", "CHF 2400", "2400 CHF", "2400.-"
+          const match = source.match(/(\d[\d'\.\s]*\d|\d+)(?:\s*(?:CHF|Fr\.?|francs?))?/i);
+          
+          if (match) {
+            // Nettoyer : supprimer espaces, apostrophes, points (séparateurs suisses)
+            const cleanNumber = match[1].replace(/['.\s]/g, '');
+            const parsedNumber = parseInt(cleanNumber, 10);
+            
+            // Validation : Revenu mensuel raisonnable (entre 1000 et 50'000 CHF)
+            if (parsedNumber >= 1000 && parsedNumber <= 50000) {
+              monthlyIncome = parsedNumber;
+              console.log(`💰 Revenu extrait: ${monthlyIncome} CHF (source: "${source}")`);
+              break;
+            }
+            
+            // Si le nombre est trop grand (ex: "800k" = 800'000), c'est probablement un budget achat
+            // On ignore et on laisse null pour que l'agent complète
+            if (parsedNumber > 50000) {
+              console.log(`⚠️ Montant trop élevé ignoré: ${parsedNumber} (probablement un budget achat)`);
+            }
+          }
+        }
+        
+        // ═══════════════════════════════════════════════════════════════
+        // CONSTRUCTION DU PAYLOAD ENRICHI
+        // ═══════════════════════════════════════════════════════════════
         const payload = {
             firstName,
             lastName,
             email: emailData?.email || 'no-email@detected.com',
             phone: entities?.phone || null,
             monthlyIncome: monthlyIncome,
-            notes: `Lead capturé depuis l'email. Résumé IA: ${summary || 'N/A'}`,
+            currentCity: entities?.location || null, // Ajout de la localisation
+            notes: buildEnrichedNotes(summary, entities), // Notes enrichies
             status: 'NEW'
         };
 
-        console.log('📤 Envoi du payload:', payload);
+        console.log('📤 Envoi du payload enrichi:', payload);
 
         // Appel API avec timeout de sécurité
         const controller = new AbortController();
