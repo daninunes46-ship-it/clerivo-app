@@ -77,6 +77,18 @@ const PipelinePage = () => {
   // Fetch candidats depuis le backend
   useEffect(() => {
     fetchCandidates();
+    
+    // Event listener : Rafraîchir automatiquement quand un candidat est ajouté depuis l'Inbox
+    const handleCandidateAdded = () => {
+      console.log('📢 Événement détecté : Nouveau candidat ajouté, rafraîchissement du pipeline...');
+      fetchCandidates();
+    };
+    
+    window.addEventListener('candidateAdded', handleCandidateAdded);
+    
+    return () => {
+      window.removeEventListener('candidateAdded', handleCandidateAdded);
+    };
   }, []);
 
   const fetchCandidates = async () => {

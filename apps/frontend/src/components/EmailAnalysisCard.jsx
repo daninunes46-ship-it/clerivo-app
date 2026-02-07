@@ -10,26 +10,33 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
 
-  // Helper : Construction de notes enrichies à partir de l'analyse IA
+  // ═════════════════════════════════════════════════════════════════════
+  // HELPER : Construction de notes enrichies (100% SAFE)
+  // ═════════════════════════════════════════════════════════════════════
   const buildEnrichedNotes = (summary, entities) => {
-    const parts = [
-      '🤖 Lead capturé automatiquement depuis l\'Inbox',
-      '',
-      '📝 Résumé IA:',
-      summary || 'N/A',
-      ''
-    ];
+    try {
+      const parts = [
+        '🤖 Lead capturé automatiquement depuis l\'Inbox',
+        '',
+        '📝 Résumé IA:',
+        String(summary || 'N/A'),
+        ''
+      ];
 
-    if (entities) {
-      parts.push('📊 Informations extraites:');
-      
-      if (entities.budget) parts.push(`• Budget/Revenu mentionné: ${entities.budget}`);
-      if (entities.location) parts.push(`• Localisation: ${entities.location}`);
-      if (entities.phone) parts.push(`• Téléphone: ${entities.phone}`);
-      if (entities.intent) parts.push(`• Intention: ${entities.intent}`);
+      if (entities && typeof entities === 'object') {
+        parts.push('📊 Informations extraites:');
+        
+        if (entities.budget) parts.push(`• Budget/Revenu: ${entities.budget}`);
+        if (entities.location) parts.push(`• Localisation: ${entities.location}`);
+        if (entities.phone) parts.push(`• Téléphone: ${entities.phone}`);
+        if (entities.intent) parts.push(`• Intention: ${entities.intent}`);
+      }
+
+      return parts.join('\n');
+    } catch (err) {
+      console.error('⚠️ Erreur buildEnrichedNotes:', err);
+      return '🤖 Lead capturé depuis l\'Inbox';
     }
-
-    return parts.join('\n');
   };
 
   if (loading) {
@@ -45,15 +52,18 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
   }
 
   if (!analysis || analysis.error) {
-    return null; // Don't show card if analysis failed or doesn't exist yet
+    return null;
   }
 
   const { classification, sentiment, entities, summary } = analysis;
 
+  // ═════════════════════════════════════════════════════════════════════
+  // HANDLER : Ajout au CRM (ULTRA-SÉCURISÉ, ANTI-CRASH)
+  // ═════════════════════════════════════════════════════════════════════
   const handleAddToCRM = async () => {
-    // Guard : Si déjà ajouté, ne rien faire
+    // Guard 1 : Déjà ajouté
     if (added) {
-      console.log('✅ Candidat déjà marqué comme ajouté, action ignorée.');
+      console.log('✅ Candidat déjà ajouté, action ignorée.');
       return;
     }
 
@@ -61,88 +71,103 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
 
     try {
         console.log('🚀 Début de l\'ajout au CRM...');
-        console.log('📊 Données IA disponibles:', { entities, summary });
+        console.log('📊 Données IA:', { entities, summary, emailData });
         
-        // ═══════════════════════════════════════════════════════════════
-        // EXTRACTION INTELLIGENTE DU NOM (avec gestion des formats suisses)
-        // ═══════════════════════════════════════════════════════════════
+        // ───────────────────────────────────────────────────────────────
+        // EXTRACTION NOM (100% SAFE)
+        // ───────────────────────────────────────────────────────────────
         let firstName = 'Inconnu';
         let lastName = 'N/A';
         
-        const fullName = entities?.client_name || emailData?.from || 'Inconnu';
-        
-        // Split intelligent : gère "M. Dupont Jean", "Jean Dupont", "DUPONT Jean"
-        const nameParts = fullName
-          .replace(/^(M\.|Mme|Mlle|Mr|Mrs|Ms)\.?\s*/i, '') // Retire les titres
-          .trim()
-          .split(/\s+/); // Split sur espaces multiples
-        
-        if (nameParts.length >= 2) {
-          firstName = nameParts[0];
-          lastName = nameParts.slice(1).join(' ');
-        } else if (nameParts.length === 1) {
-          firstName = nameParts[0];
-          lastName = 'N/A';
-        }
-        
-        // ═══════════════════════════════════════════════════════════════
-        // EXTRACTION INTELLIGENTE DU REVENU (multi-formats)
-        // ═══════════════════════════════════════════════════════════════
-        let monthlyIncome = null;
-        
-        // Sources possibles : entities.budget, entities.income, ou mention dans summary
-        const budgetSources = [
-          entities?.budget,
-          entities?.income,
-          entities?.salary
-        ].filter(Boolean);
-        
-        for (const source of budgetSources) {
-          if (!source) continue;
+        try {
+          const rawName = entities?.client_name || emailData?.from || '';
           
-          // Regex pour extraire les montants (formats suisses) :
-          // "2400", "2'400", "2.400", "CHF 2400", "2400 CHF", "2400.-"
-          const match = source.match(/(\d[\d'\.\s]*\d|\d+)(?:\s*(?:CHF|Fr\.?|francs?))?/i);
-          
-          if (match) {
-            // Nettoyer : supprimer espaces, apostrophes, points (séparateurs suisses)
-            const cleanNumber = match[1].replace(/['.\s]/g, '');
-            const parsedNumber = parseInt(cleanNumber, 10);
+          // Sécurité : Vérifier que c'est bien une string
+          if (typeof rawName === 'string' && rawName.length > 0) {
+            // Retirer les titres et nettoyer
+            const cleanName = rawName
+              .replace(/^(M\.|Mme|Mlle|Mr\.?|Mrs\.?|Ms\.?)\s*/gi, '')
+              .trim();
             
-            // Validation : Revenu mensuel raisonnable (entre 1000 et 50'000 CHF)
-            if (parsedNumber >= 1000 && parsedNumber <= 50000) {
-              monthlyIncome = parsedNumber;
-              console.log(`💰 Revenu extrait: ${monthlyIncome} CHF (source: "${source}")`);
-              break;
-            }
-            
-            // Si le nombre est trop grand (ex: "800k" = 800'000), c'est probablement un budget achat
-            // On ignore et on laisse null pour que l'agent complète
-            if (parsedNumber > 50000) {
-              console.log(`⚠️ Montant trop élevé ignoré: ${parsedNumber} (probablement un budget achat)`);
+            if (cleanName) {
+              const parts = cleanName.split(/\s+/).filter(p => p.length > 0);
+              
+              if (parts.length >= 2) {
+                firstName = parts[0];
+                lastName = parts.slice(1).join(' ');
+              } else if (parts.length === 1) {
+                firstName = parts[0];
+                lastName = 'N/A';
+              }
             }
           }
+        } catch (nameError) {
+          console.error('⚠️ Erreur extraction nom:', nameError);
+          // Fallback : garder les valeurs par défaut
         }
         
-        // ═══════════════════════════════════════════════════════════════
-        // CONSTRUCTION DU PAYLOAD ENRICHI
-        // ═══════════════════════════════════════════════════════════════
+        console.log(`👤 Nom extrait: ${firstName} ${lastName}`);
+        
+        // ───────────────────────────────────────────────────────────────
+        // EXTRACTION REVENU (100% SAFE)
+        // ───────────────────────────────────────────────────────────────
+        let monthlyIncome = null;
+        
+        try {
+          // Sources possibles (avec vérification de type)
+          const sources = [
+            entities?.budget,
+            entities?.income,
+            entities?.salary
+          ];
+          
+          for (const source of sources) {
+            // Guard : Vérifier que c'est une string
+            if (!source || typeof source !== 'string') continue;
+            
+            // Regex pour montants suisses : "2400", "2'400", "CHF 2400", etc.
+            const match = source.match(/(\d[\d'\.\s]*\d|\d+)/);
+            
+            if (match && match[1]) {
+              // Nettoyage : supprimer séparateurs suisses
+              const cleaned = match[1].replace(/['.\s]/g, '');
+              const number = parseInt(cleaned, 10);
+              
+              // Validation : Revenu mensuel plausible (1k - 50k CHF)
+              if (!isNaN(number) && number >= 1000 && number <= 50000) {
+                monthlyIncome = number;
+                console.log(`💰 Revenu extrait: ${monthlyIncome} CHF (de "${source}")`);
+                break;
+              } else if (number > 50000) {
+                console.log(`⚠️ Montant ${number} ignoré (trop élevé = budget achat)`);
+              }
+            }
+          }
+        } catch (incomeError) {
+          console.error('⚠️ Erreur extraction revenu:', incomeError);
+          // monthlyIncome reste null
+        }
+        
+        // ───────────────────────────────────────────────────────────────
+        // CONSTRUCTION PAYLOAD (GARANTIE SANS CRASH)
+        // ───────────────────────────────────────────────────────────────
         const payload = {
-            firstName,
-            lastName,
-            email: emailData?.email || 'no-email@detected.com',
-            phone: entities?.phone || null,
+            firstName: String(firstName),
+            lastName: String(lastName),
+            email: String(emailData?.email || 'no-email@detected.com'),
+            phone: entities?.phone && typeof entities.phone === 'string' ? entities.phone : null,
             monthlyIncome: monthlyIncome,
-            currentCity: entities?.location || null, // Ajout de la localisation
-            notes: buildEnrichedNotes(summary, entities), // Notes enrichies
-            status: 'NEW'
+            currentCity: entities?.location && typeof entities.location === 'string' ? entities.location : null,
+            notes: buildEnrichedNotes(summary, entities)
         };
 
-        console.log('📤 Envoi du payload enrichi:', payload);
+        console.log('📤 Payload final:', payload);
 
-        // Appel API avec timeout de sécurité
+        // ───────────────────────────────────────────────────────────────
+        // APPEL API (avec timeout & error handling)
+        // ───────────────────────────────────────────────────────────────
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch(`${API_URL}/api/candidates`, {
             method: 'POST',
@@ -155,66 +180,76 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
         });
 
         clearTimeout(timeoutId);
-
         console.log('📥 Réponse API - Status:', response.status);
 
-        // 1. GÉRER LE CAS 409 (DOUBLON) EN PRIORITÉ
+        // ───────────────────────────────────────────────────────────────
+        // GESTION DES RÉPONSES (ORDRE CRITIQUE)
+        // ───────────────────────────────────────────────────────────────
+        
+        // 1. CAS 409 (DOUBLON) - PRIORITAIRE
         if (response.status === 409) {
-            console.log('ℹ️ Candidat déjà existant (409)');
+            console.log('ℹ️ Doublon détecté (409)');
             setAdded(true);
             
-            // Toast sécurisé avec délai pour éviter conflit DOM
             setTimeout(() => {
                 toast.info("⚠️ Candidat déjà existant", {
-                    description: "Ce contact est déjà présent dans le pipeline.",
+                    description: "Ce contact est déjà dans le pipeline.",
                     duration: 3000
                 });
             }, 100);
             
-            return; // STOP ICI - Succès UX
+            return;
         }
 
-        // 2. GÉRER LES AUTRES ERREURS HTTP
+        // 2. AUTRES ERREURS HTTP
         if (!response.ok) {
-            const errorText = await response.text();
+            const errorText = await response.text().catch(() => 'Erreur inconnue');
             console.error('❌ Erreur HTTP:', response.status, errorText);
-            throw new Error(`Erreur ${response.status}: ${errorText}`);
+            throw new Error(`Erreur ${response.status}`);
         }
 
-        // 3. PARSER LA RÉPONSE JSON
+        // 3. PARSING JSON SÉCURISÉ
         let data;
         try {
             data = await response.json();
         } catch (parseError) {
-            console.error('❌ Erreur parsing JSON:', parseError);
-            throw new Error('Réponse API invalide');
+            console.error('❌ JSON invalide:', parseError);
+            throw new Error('Réponse serveur invalide');
         }
 
-        console.log('✅ Réponse parsée:', data);
+        console.log('✅ Données reçues:', data);
 
-        // 4. VALIDER LE SUCCÈS
+        // 4. SUCCÈS
         if (data.success) {
             setAdded(true);
             
-            // Toast de succès avec délai
+            // Dispatcher un événement global pour notifier le Pipeline
+            window.dispatchEvent(new CustomEvent('candidateAdded', { 
+              detail: { 
+                candidateId: data.data?.id,
+                firstName,
+                lastName 
+              } 
+            }));
+            
             setTimeout(() => {
                 toast.success("✅ Candidat ajouté au Pipeline !", {
-                    description: `${firstName} ${lastName} est dans la colonne "Nouveaux".`,
+                    description: `${firstName} ${lastName} est dans "Nouveaux".`,
                     duration: 4000
                 });
             }, 100);
         } else {
-            throw new Error(data.message || 'Erreur inconnue');
+            throw new Error(data.message || 'Échec création');
         }
 
     } catch (err) {
-        console.error("❌ ERREUR handleAddToCRM:", err);
+        console.error("❌ ERREUR CRITIQUE handleAddToCRM:", err);
+        console.error("Stack:", err.stack);
         
-        // Gestion spécifique des erreurs réseau
+        // Gestion d'erreur gracieuse (jamais de crash)
         if (err.name === 'AbortError') {
-            console.error('⏱️ Timeout de la requête');
             setTimeout(() => {
-                toast.error("Timeout", {
+                toast.error("⏱️ Timeout", {
                     description: "Le serveur met trop de temps à répondre.",
                     duration: 3000
                 });
@@ -222,17 +257,14 @@ const EmailAnalysisCard = ({ analysis, loading, emailData }) => {
         } else {
             setTimeout(() => {
                 toast.error("❌ Erreur d'ajout", {
-                    description: err.message || "Impossible de contacter le serveur.",
+                    description: err.message || "Erreur inconnue.",
                     duration: 4000
                 });
             }, 100);
         }
-        
-        // NE PAS marquer comme ajouté en cas d'erreur
-        // setAdded reste à false pour permettre un nouvel essai
     } finally {
         setAdding(false);
-        console.log('🏁 Fin du processus d\'ajout');
+        console.log('🏁 Fin du processus');
     }
   };
 
