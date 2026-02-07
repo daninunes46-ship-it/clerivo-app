@@ -20,6 +20,9 @@ exports.getCandidates = async (req, res) => {
 
     const where = {};
 
+    // CRITIQUE : Exclure les candidats soft-deleted
+    where.deletedAt = null;
+
     // Filtre par recherche (nom ou email)
     if (search) {
       where.OR = [
@@ -187,6 +190,11 @@ exports.getCandidateById = async (req, res) => {
  */
 exports.createCandidate = async (req, res) => {
   try {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📥 POST /api/candidates - PAYLOAD REÇU:');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('═══════════════════════════════════════════════════════');
+    
     const {
       // Informations de base
       firstName,
@@ -216,13 +224,18 @@ exports.createCandidate = async (req, res) => {
       solvencyProfile
     } = req.body;
 
-    // Validation des champs obligatoires
-    if (!firstName || !lastName || !email) {
+    // Validation des champs obligatoires (assouplissement pour "Neural Inbox")
+    // L'email est le seul vraiment critique pour éviter les doublons
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Les champs firstName, lastName et email sont obligatoires'
+        message: 'Le champ email est obligatoire'
       });
     }
+    
+    // Fallback pour les champs manquants (parsing IA incomplet)
+    const safeFirstName = firstName || 'Inconnu';
+    const safeLastName = lastName || 'N/A';
 
     // Vérifier si l'email existe déjà
     const existingCandidate = await prisma.candidate.findUnique({
@@ -241,8 +254,8 @@ exports.createCandidate = async (req, res) => {
       // Créer le candidat
       const newCandidate = await tx.candidate.create({
         data: {
-          firstName,
-          lastName,
+          firstName: safeFirstName,
+          lastName: safeLastName,
           email,
           phone,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
@@ -267,7 +280,8 @@ exports.createCandidate = async (req, res) => {
           status: 'NEW', // Par défaut, le candidat arrive dans "Nouveaux"
           readinessStatus: 'INCOMPLETE',
           priority: 'MEDIUM',
-          source: 'CRM' // Peut être changé dynamiquement plus tard
+          source: 'CRM', // Peut être changé dynamiquement plus tard
+          notes: req.body.notes || null // Notes du parsing IA (Frontend)
         }
       });
 
@@ -287,7 +301,9 @@ exports.createCandidate = async (req, res) => {
       return { candidate: newCandidate, application: newApplication, profile: newProfile };
     });
 
-    console.log(`✅ Candidat créé: ${result.candidate.firstName} ${result.candidate.lastName} (Application ${result.application.id})`);
+    console.log(`✅ CANDIDAT CRÉÉ: ${result.candidate.firstName} ${result.candidate.lastName} (ID: ${result.candidate.id})`);
+    console.log(`✅ APPLICATION CRÉÉE: ID ${result.application.id}, Status: ${result.application.status}`);
+    console.log(`📋 Notes stockées: ${result.candidate.notes ? 'OUI' : 'NON'}`);
 
     res.status(201).json({
       success: true,
