@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, User, MapPin, Shield, AlertTriangle, CheckCircle, Mail, Phone } from 'lucide-react';
+import { Calendar, User, MapPin, Shield, AlertTriangle, CheckCircle, Mail, Phone, MoreVertical } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
 
 import { useNavigate } from 'react-router-dom';
@@ -7,8 +7,10 @@ import { useNavigate } from 'react-router-dom';
 /**
  * CandidateCard - Carte candidat pour le Pipeline Locatif Suisse
  * Affiche: Nom, Bien, Revenu, Badges Swiss Safe (Solvency + Poursuites)
+ * 
+ * V1.1: Ajout menu contextuel mobile (⋮) pour déplacer/supprimer sans drag
  */
-const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200' }) => {
+const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', onOpenMenu }) => {
   const navigate = useNavigate();
 
   // Extraction des données du candidat
@@ -121,12 +123,28 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200' }) 
         >
           {/* Header - Nom du candidat */}
           <div className="flex justify-between items-start mb-3">
-            <h4 className="font-bold text-zinc-900 text-sm leading-tight group-hover:text-indigo-600 transition-colors">
+            <h4 className="font-bold text-zinc-900 text-sm leading-tight group-hover:text-indigo-600 transition-colors flex-1">
               {fullName}
             </h4>
-            <div className="flex items-center gap-1 text-[10px] text-zinc-400">
+            
+            {/* Bouton Menu Mobile (⋮) - Visible uniquement sur mobile */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log('📱 Ouverture menu mobile pour:', candidate.id);
+                if (onOpenMenu) {
+                  onOpenMenu(candidate);
+                }
+              }}
+              className="md:hidden flex-shrink-0 p-1.5 -mr-2 rounded-lg hover:bg-zinc-100 active:bg-zinc-200 transition-colors"
+              aria-label="Ouvrir le menu d'actions"
+            >
+              <MoreVertical size={16} className="text-zinc-500" />
+            </button>
+
+            <div className="hidden md:flex items-center gap-1 text-[10px] text-zinc-400">
               <Calendar size={10} />
-              <span className="hidden md:inline">
+              <span>
                 {new Date(candidate.createdAt).toLocaleDateString('fr-CH', { day: 'numeric', month: 'short' })}
               </span>
             </div>

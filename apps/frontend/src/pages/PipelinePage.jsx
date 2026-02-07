@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { DragDropContext } from '@hello-pangea/dnd';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import KanbanColumn from '../components/kanban/KanbanColumn';
 import CandidateCard from '../components/kanban/CandidateCard';
+import MoveToMenu from '../components/kanban/MoveToMenu';
 
 // 🌐 URL API : Utilise la variable d'environnement ou proxy Vite
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -12,11 +14,15 @@ const API_URL = import.meta.env.VITE_API_URL || '';
  * PipelinePage - Vue Kanban Pipeline Locatif Suisse
  * Design: "Apple-like" (Zero Learning Curve)
  * Data: API / Candidates
+ * 
+ * V1.1: Ajout menu mobile contextuel pour déplacer candidats sans drag
  */
 const PipelinePage = () => {
+  const navigate = useNavigate();
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedCandidate, setSelectedCandidate] = useState(null); // Pour le menu mobile
   const scrollContainerRef = React.useRef(null);
   const autoScrollIntervalRef = React.useRef(null);
 
@@ -359,6 +365,116 @@ const PipelinePage = () => {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // MENU MOBILE : Déplacer/Supprimer candidat (Alternative au D&D)
+  // ═══════════════════════════════════════════════════════════════
+  
+  const handleOpenMenu = (candidate) => {
+    console.log('📱 Menu ouvert pour:', candidate.firstName, candidate.lastName);
+    setSelectedCandidate(candidate);
+  };
+
+  const handleCloseMenu = () => {
+    setSelectedCandidate(null);
+  };
+
+  const handleMoveFromMenu = async (candidateId, newStatus) => {
+    console.log('📱 Déplacement via menu:', candidateId, '->', newStatus);
+    
+    const candidateToMove = candidates.find(c => c.id === candidateId);
+    if (!candidateToMove) {
+      toast.error('Candidat introuvable');
+      return;
+    }
+
+    // OPTIMISTIC UPDATE
+    const oldCandidates = [...candidates];
+    setCandidates(prevCandidates => {
+      return prevCandidates.map(candidate => {
+        if (candidate.id === candidateId) {
+          const updatedApplications = candidate.applications.length > 0
+            ? candidate.applications.map((app, idx) => (idx === 0 ? { ...app, status: newStatus } : app))
+            : [{ status: newStatus, candidateId, readinessStatus: 'INCOMPLETE', priority: 'MEDIUM', source: 'MOBILE_MENU' }];
+          return { ...candidate, applications: updatedApplications };
+        }
+        return candidate;
+      });
+    });
+
+    toast.info(`Déplacement vers "${COLUMNS[Object.keys(COLUMNS).find(key => COLUMNS[key].statuses.includes(newStatus))]?.title}"`, {
+      description: 'Mise à jour du statut en cours...'
+    });
+
+    // API CALL
+    try {
+      const applicationId = candidateToMove.applications?.[0]?.id;
+      if (!applicationId) {
+        throw new Error('Aucune application trouvée pour ce candidat');
+      }
+
+      const response = await fetch(`${API_URL}/api/applications/${applicationId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erreur HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('✅ Candidat déplacé !', {
+          description: `Maintenant dans la colonne "${COLUMNS[Object.keys(COLUMNS).find(key => COLUMNS[key].statuses.includes(newStatus))]?.title}"`
+        });
+      } else {
+        throw new Error(data.message || 'Erreur inconnue');
+      }
+    } catch (error) {
+      console.error('❌ Erreur update statut (menu):', error);
+      
+      // REVERT
+      setCandidates(oldCandidates);
+      
+      toast.error('❌ Erreur de déplacement', {
+        description: 'Le statut n\'a pas pu être mis à jour. Réessayez.'
+      });
+      throw error; // Pour que MoveToMenu puisse gérer l'erreur
+    }
+  };
+
+  const handleDeleteFromMenu = async (candidateId) => {
+    console.log('🗑️ Suppression via menu:', candidateId);
+
+    try {
+      const response = await fetch(`${API_URL}/api/candidates/${candidateId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la suppression');
+      }
+
+      // Succès : Retirer le candidat de la liste locale
+      setCandidates(prevCandidates => prevCandidates.filter(c => c.id !== candidateId));
+      
+      toast.success('✅ Candidat supprimé', {
+        description: 'Le candidat a été retiré du pipeline'
+      });
+    } catch (error) {
+      console.error('❌ Erreur suppression (menu):', error);
+      toast.error('Impossible de supprimer le candidat');
+      throw error;
+    }
+  };
+
+  const handleViewDetailsFromMenu = (candidateId) => {
+    navigate(`/candidates/${candidateId}`);
+  };
+
   // État de chargement
   if (loading) {
     return (
@@ -438,6 +554,7 @@ const PipelinePage = () => {
                     candidate={candidate}
                     index={index}
                     statusColor={column.color.cardBorder}
+                    onOpenMenu={handleOpenMenu}
                   />
                 ))}
               </KanbanColumn>
@@ -447,6 +564,19 @@ const PipelinePage = () => {
         </div>
         </div>
       </DragDropContext>
+
+      {/* Menu Mobile Contextuel (Bottom Sheet) */}
+      {selectedCandidate && (
+        <MoveToMenu
+          candidate={selectedCandidate}
+          currentStatus={selectedCandidate.applications?.[0]?.status || 'NEW'}
+          columns={Object.values(COLUMNS)}
+          onMove={handleMoveFromMenu}
+          onViewDetails={handleViewDetailsFromMenu}
+          onDelete={handleDeleteFromMenu}
+          onClose={handleCloseMenu}
+        />
+      )}
     </div>
   );
 };
