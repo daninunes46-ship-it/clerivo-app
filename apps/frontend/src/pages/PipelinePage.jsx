@@ -118,6 +118,65 @@ const PipelinePage = () => {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [loading]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // AUTO-SCROLL pendant le Drag & Drop (UX Premium)
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let animationFrameId = null;
+
+    const autoScroll = (e) => {
+      if (!e.clientX) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const mouseX = e.clientX;
+      
+      // Zone de déclenchement : 100px des bords
+      const EDGE_SIZE = 100;
+      const SCROLL_SPEED = 15; // pixels par frame
+
+      // Scroll vers la droite si proche du bord droit
+      if (mouseX > containerRect.right - EDGE_SIZE) {
+        const intensity = (mouseX - (containerRect.right - EDGE_SIZE)) / EDGE_SIZE;
+        container.scrollLeft += SCROLL_SPEED * intensity;
+      }
+      
+      // Scroll vers la gauche si proche du bord gauche
+      if (mouseX < containerRect.left + EDGE_SIZE) {
+        const intensity = (containerRect.left + EDGE_SIZE - mouseX) / EDGE_SIZE;
+        container.scrollLeft -= SCROLL_SPEED * intensity;
+      }
+
+      animationFrameId = requestAnimationFrame(() => autoScroll(e));
+    };
+
+    const handleDragStart = () => {
+      document.addEventListener('mousemove', handleMouseMove);
+    };
+
+    const handleMouseMove = (e) => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      autoScroll(e);
+    };
+
+    const handleDragEnd = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+
+    // Écouter les événements de drag de @hello-pangea/dnd
+    document.addEventListener('dragstart', handleDragStart);
+    document.addEventListener('dragend', handleDragEnd);
+
+    return () => {
+      document.removeEventListener('dragstart', handleDragStart);
+      document.removeEventListener('dragend', handleDragEnd);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
   const fetchCandidates = async () => {
     try {
       setLoading(true);
@@ -174,7 +233,9 @@ const PipelinePage = () => {
     });
   };
 
-  // Gestion du Drag & Drop
+  // ═══════════════════════════════════════════════════════════════
+  // Gestion du Drag & Drop (UPDATE STATUT API)
+  // ═══════════════════════════════════════════════════════════════
   const onDragEnd = async (result) => {
     const { destination, source, draggableId } = result;
 
@@ -188,21 +249,101 @@ const PipelinePage = () => {
     }
 
     const destColumn = COLUMNS[destination.droppableId];
-    
-    // Optimistic update pour l'UX
     const candidateToMove = candidates.find(c => String(c.id) === draggableId);
-    if (!candidateToMove) return;
-
-    // Dans une vraie implémentation : 
-    // 1. Mettre à jour l'état local immédiatement
-    // 2. Envoyer la requête API
-    // 3. Revert si erreur
     
-    toast.info(`Déplacement vers "${destColumn.title}"`, {
-      description: 'Mise à jour du statut en cours...'
+    if (!candidateToMove) {
+      console.error('❌ Candidat introuvable:', draggableId);
+      return;
+    }
+
+    // Déterminer le nouveau statut (prendre le premier du tableau)
+    const newStatus = destColumn.statuses[0];
+    
+    console.log(`🔄 Déplacement: ${candidateToMove.firstName} ${candidateToMove.lastName}`);
+    console.log(`   De: ${source.droppableId} → Vers: ${destination.droppableId}`);
+    console.log(`   Nouveau statut: ${newStatus}`);
+
+    // ─────────────────────────────────────────────────────────────
+    // OPTIMISTIC UPDATE (Update local immédiat pour UX fluide)
+    // ─────────────────────────────────────────────────────────────
+    const oldCandidates = [...candidates];
+    
+    setCandidates(prevCandidates => {
+      return prevCandidates.map(candidate => {
+        if (String(candidate.id) === draggableId) {
+          // Mettre à jour le statut de l'application
+          const updatedApplications = candidate.applications.map((app, idx) => {
+            if (idx === 0) { // Update la première application
+              return { ...app, status: newStatus };
+            }
+            return app;
+          });
+          
+          return { 
+            ...candidate, 
+            applications: updatedApplications.length > 0 
+              ? updatedApplications 
+              : [{ status: newStatus }] // Créer une app si inexistante
+          };
+        }
+        return candidate;
+      });
     });
 
-    // TODO: Appel API réel pour update status
+    // Toast de feedback immédiat
+    toast.info(`Déplacement vers "${destColumn.title}"`, {
+      description: 'Mise à jour du statut en cours...',
+      duration: 2000
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // APPEL API pour persister le changement
+    // ─────────────────────────────────────────────────────────────
+    try {
+      // Récupérer l'ID de l'application
+      const applicationId = candidateToMove.applications?.[0]?.id;
+      
+      if (!applicationId) {
+        throw new Error('Aucune application trouvée pour ce candidat');
+      }
+
+      const response = await fetch(`${API_URL}/api/applications/${applicationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: newStatus
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Statut mis à jour sur le serveur');
+        toast.success('✅ Statut mis à jour', {
+          description: `${candidateToMove.firstName} ${candidateToMove.lastName} → ${destColumn.title}`,
+          duration: 2000
+        });
+      } else {
+        throw new Error(data.message || 'Erreur inconnue');
+      }
+
+    } catch (error) {
+      console.error('❌ Erreur update statut:', error);
+      
+      // REVERT : Restaurer l'état précédent
+      setCandidates(oldCandidates);
+      
+      toast.error('❌ Erreur de déplacement', {
+        description: 'Le statut n\'a pas pu être mis à jour. Réessayez.',
+        duration: 3000
+      });
+    }
   };
 
   // État de chargement

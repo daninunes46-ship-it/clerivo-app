@@ -11,6 +11,7 @@ const aiRoutes = require('./routes/ai');
 const candidateRoutes = require('./routes/candidates');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const applicationRoutes = require('./routes/applications');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,6 +88,8 @@ app.use('/api/ai', aiRoutes);
 console.log('✅ AI routes mounted');
 app.use('/api/candidates', candidateRoutes);
 console.log('✅ Candidate routes mounted (including upload endpoint)');
+app.use('/api/applications', applicationRoutes);
+console.log('✅ Application routes mounted (status updates)');
 app.use('/api/admin', adminRoutes);
 console.log('✅ Admin routes mounted (fix-pipeline, stats)');
 
