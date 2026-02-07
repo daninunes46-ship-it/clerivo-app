@@ -5,8 +5,8 @@ import { toast } from 'sonner';
 import KanbanColumn from '../components/kanban/KanbanColumn';
 import CandidateCard from '../components/kanban/CandidateCard';
 
-// 🌐 URL relative pour fonctionner avec le proxy Vite (mobile ready)
-const API_URL = '';
+// 🌐 URL API : Utilise la variable d'environnement ou proxy Vite
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 /**
  * PipelinePage - Vue Kanban Pipeline Locatif Suisse
@@ -74,45 +74,6 @@ const PipelinePage = () => {
 
   const COLUMN_ORDER = ['nouveaux', 'visites', 'enCours', 'prets', 'decision'];
 
-  // Données de démonstration (Fallback si DB vide)
-  const DEMO_DATA = [
-    {
-      id: 'demo-1',
-      firstName: 'Jean',
-      lastName: 'Dupont',
-      email: 'jean.dupont@example.com',
-      phone: '+41 79 123 45 67',
-      monthlyIncome: 8500,
-      createdAt: new Date().toISOString(),
-      applications: [{
-        status: 'DOSSIER_READY', // Colonne Prêts
-        property: { city: 'Lausanne', rooms: 3.5 }
-      }],
-      latestSolvencyProfile: {
-        solvencyScore: 95,
-        solvencyRating: 'EXCELLENT',
-        pursuitsStatus: 'CLEAN'
-      }
-    },
-    {
-      id: 'demo-2',
-      firstName: 'Pierre',
-      lastName: 'Morel',
-      email: 'pierre.morel@example.com',
-      monthlyIncome: 4200,
-      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-      applications: [{
-        status: 'VISIT_SCHEDULED', // Colonne Visites
-        property: { city: 'Gland', rooms: 2.5 }
-      }],
-      latestSolvencyProfile: {
-        solvencyScore: 25,
-        solvencyRating: 'RISKY',
-        pursuitsStatus: 'MAJOR_ISSUES'
-      }
-    }
-  ];
-
   // Fetch candidats depuis le backend
   useEffect(() => {
     fetchCandidates();
@@ -125,28 +86,22 @@ const PipelinePage = () => {
       
       const response = await fetch(`${API_URL}/api/candidates`);
       
-      // Mode dégradé si API down ou DB vide
       if (!response.ok) {
-        console.warn('API non disponible, chargement des données de démo');
-        setCandidates(DEMO_DATA);
-        return;
+        throw new Error(`Erreur HTTP: ${response.status}`);
       }
       
       const result = await response.json();
       
-      if (result.success && result.data && result.data.length > 0) {
+      if (result.success && result.data) {
         setCandidates(result.data);
-        console.log(`✅ ${result.data.length} candidats chargés`);
+        console.log(`✅ ${result.data.length} candidats chargés depuis l'API`);
       } else {
-        // Si aucune donnée en DB, charger la démo pour l'UX
-        console.log('Aucun candidat en DB, chargement démo');
-        setCandidates(DEMO_DATA);
+        setCandidates([]);
       }
     } catch (err) {
       console.error('❌ Erreur fetch candidats:', err);
-      // Fallback sur données démo en cas d'erreur réseau
-      setCandidates(DEMO_DATA);
-      toast.info("Mode Démo activé (API inaccessible)");
+      setError("Impossible de charger le pipeline. Vérifiez que le backend tourne.");
+      toast.error("Erreur de chargement des données");
     } finally {
       setLoading(false);
     }
@@ -158,14 +113,25 @@ const PipelinePage = () => {
     if (!column) return [];
 
     return candidates.filter(candidate => {
-      // Prendre la dernière application active
-      const latestApp = candidate.applications?.find(
-        app => !['REJECTED', 'ARCHIVED', 'WITHDRAWN'].includes(app.status)
-      ) || candidate.applications?.[0]; // Fallback pour données démo simples
+      // Logique robuste : Si le candidat a des applications, on prend le statut de la plus récente.
+      // Sinon (cas "Sophie Martinez" ajoutée via CRM sans application encore créée), on par défaut à 'NEW'.
+      let status = 'NEW';
+
+      if (candidate.applications && candidate.applications.length > 0) {
+          // Chercher une application active (non rejetée/archivée)
+          const activeApp = candidate.applications.find(
+            app => !['REJECTED', 'ARCHIVED', 'WITHDRAWN'].includes(app.status)
+          );
+          
+          // Si on trouve une active, on prend son statut. Sinon on prend la toute dernière (même si fermée/refusée pour historique)
+          if (activeApp) {
+              status = activeApp.status;
+          } else {
+             status = candidate.applications[0].status;
+          }
+      }
       
-      if (!latestApp) return false;
-      
-      return column.statuses.includes(latestApp.status);
+      return column.statuses.includes(status);
     });
   };
 
