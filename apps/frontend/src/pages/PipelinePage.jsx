@@ -24,7 +24,6 @@ const PipelinePage = () => {
   const [error, setError] = useState(null);
   const [selectedCandidate, setSelectedCandidate] = useState(null); // Pour le menu mobile
   const scrollContainerRef = React.useRef(null);
-  const autoScrollIntervalRef = React.useRef(null);
 
   // Configuration des colonnes selon le workflow suisse (CDC 6.2)
   const COLUMNS = {
@@ -182,11 +181,11 @@ const PipelinePage = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // AUTO-SCROLL INTELLIGENT pendant Drag (@hello-pangea/dnd hooks)
-  // V1.1: Support SOURIS + TACTILE (Mobile)
+  // AUTO-SCROLL PHYSIQUE pendant Drag (Standard iOS 2026)
+  // V1.2: Velocity-Based Scroll avec Courbe d'Accélération
   // ═══════════════════════════════════════════════════════════════
   const onDragStart = (start) => {
-    console.log('🎬 Drag démarré:', start.draggableId);
+    console.log('🎬 Drag démarré (Physics-based scroll):', start.draggableId);
     
     // ───────────────────────────────────────────────────────────
     // TRACKING POSITION : Souris (Desktop) + Touch (Mobile)
@@ -199,77 +198,150 @@ const PipelinePage = () => {
     const trackTouch = (e) => {
       if (e.touches && e.touches.length > 0) {
         const touch = e.touches[0];
-        window.dragMouseX = touch.clientX; // Utilise la même variable pour uniformité
-        
-        // Empêcher le scroll natif pendant le drag (optionnel, peut créer des conflits)
-        // e.preventDefault(); // DÉSACTIVÉ pour éviter de bloquer le scroll manuel
+        window.dragMouseX = touch.clientX;
       }
     };
     
-    // Écouter les deux types d'événements
+    // Écouter les deux types d'événements (passive pour performance)
     document.addEventListener('mousemove', trackMouse, { passive: true });
-    document.addEventListener('touchmove', trackTouch, { passive: true }); // V1.1: NOUVEAU
+    document.addEventListener('touchmove', trackTouch, { passive: true });
     
     // ───────────────────────────────────────────────────────────
-    // AUTO-SCROLL INTELLIGENT (même logique Souris + Touch)
+    // PHYSIQUE DU SCROLL : Velocity-Based avec Courbe Quadratique
     // ───────────────────────────────────────────────────────────
     
     const container = scrollContainerRef.current;
     if (!container) return;
     
-    const performAutoScroll = () => {
-      const mouseX = window.dragMouseX;
-      if (!mouseX) return;
+    // Configuration de la physique (Inspiré iOS/macOS)
+    const EDGE_ZONE = 120;        // Zone de déclenchement (120px des bords)
+    const MAX_VELOCITY = 25;      // Vitesse maximale (pixels par frame)
+    const EASE_POWER = 2.5;       // Exposant pour courbe d'accélération (2 = quadratique, 3 = cubique)
+    const DAMPING = 0.92;         // Amortissement pour transition douce (0.9-0.95 = naturel)
+    
+    let currentVelocity = 0;      // Vitesse actuelle (smooth transitions)
+    let rafId = null;             // RequestAnimationFrame ID
+    
+    /**
+     * Calcul de la vitesse cible avec courbe d'accélération progressive
+     * Formula: velocity = MAX_VELOCITY * (1 - distance/zone)^EASE_POWER
+     * 
+     * Comportement:
+     * - Loin du bord (distance élevée) → Vitesse très faible (contrôle précis)
+     * - Proche du bord (distance faible) → Vitesse élevée (navigation rapide)
+     * - Accélération exponentielle → Feel naturel iOS-like
+     */
+    const calculateTargetVelocity = (mouseX, containerRect) => {
+      const { left, right } = containerRect;
       
-      const rect = container.getBoundingClientRect();
-      const EDGE_ZONE = 150; // Zone de déclenchement (150px des bords)
-      const MAX_SPEED = 20;   // Vitesse max de scroll
-      
-      let scrollAmount = 0;
-      
-      // DROITE : Si curseur/doigt proche du bord droit
-      if (mouseX > rect.right - EDGE_ZONE && mouseX < rect.right) {
-        const proximity = (mouseX - (rect.right - EDGE_ZONE)) / EDGE_ZONE;
-        scrollAmount = MAX_SPEED * proximity;
-        console.log(`→ Auto-scroll DROITE (${scrollAmount.toFixed(1)}px)`);
+      // SCROLL DROITE : Souris/doigt dans zone droite
+      if (mouseX > right - EDGE_ZONE) {
+        const distanceFromEdge = right - mouseX; // 0 (au bord) → 120px (loin)
+        const normalizedDistance = Math.max(0, Math.min(1, distanceFromEdge / EDGE_ZONE)); // 0 → 1
+        const easedProximity = Math.pow(1 - normalizedDistance, EASE_POWER); // Courbe quadratique/cubique
+        return MAX_VELOCITY * easedProximity;
       }
       
-      // GAUCHE : Si curseur/doigt proche du bord gauche
-      else if (mouseX < rect.left + EDGE_ZONE && mouseX > rect.left) {
-        const proximity = ((rect.left + EDGE_ZONE) - mouseX) / EDGE_ZONE;
-        scrollAmount = -MAX_SPEED * proximity;
-        console.log(`← Auto-scroll GAUCHE (${scrollAmount.toFixed(1)}px)`);
+      // SCROLL GAUCHE : Souris/doigt dans zone gauche
+      if (mouseX < left + EDGE_ZONE) {
+        const distanceFromEdge = mouseX - left; // 0 (au bord) → 120px (loin)
+        const normalizedDistance = Math.max(0, Math.min(1, distanceFromEdge / EDGE_ZONE));
+        const easedProximity = Math.pow(1 - normalizedDistance, EASE_POWER);
+        return -MAX_VELOCITY * easedProximity; // Négatif pour scroll gauche
       }
       
-      if (scrollAmount !== 0) {
-        container.scrollLeft += scrollAmount;
-      }
+      // Hors zone : Aucun scroll
+      return 0;
     };
     
-    // Démarrer l'interval d'auto-scroll (60fps)
-    autoScrollIntervalRef.current = setInterval(performAutoScroll, 16);
+    /**
+     * Boucle d'animation RequestAnimationFrame (60fps natif GPU-synced)
+     * Applique un amortissement (damping) pour transitions douces
+     */
+    const animateScroll = () => {
+      const mouseX = window.dragMouseX;
+      
+      if (mouseX !== undefined) {
+        const rect = container.getBoundingClientRect();
+        const targetVelocity = calculateTargetVelocity(mouseX, rect);
+        
+        // Interpolation lisse vers la vitesse cible (damping)
+        // Formula: current = current * damping + target * (1 - damping)
+        currentVelocity = currentVelocity * DAMPING + targetVelocity * (1 - DAMPING);
+        
+        // Seuil de vélocité minimum (évite micro-scroll imperceptible)
+        if (Math.abs(currentVelocity) > 0.1) {
+          container.scrollLeft += currentVelocity;
+          
+          // Debug (optionnel, désactiver en prod)
+          if (Math.abs(currentVelocity) > 1) {
+            const direction = currentVelocity > 0 ? '→' : '←';
+            console.log(`${direction} Physics scroll: ${currentVelocity.toFixed(2)}px/frame`);
+          }
+          
+          // Feedback visuel: Intensifier l'ombre latérale pendant scroll actif
+          updateScrollShadows(currentVelocity);
+        }
+      }
+      
+      // Continuer l'animation (récursif, s'arrête seulement au cleanup)
+      rafId = requestAnimationFrame(animateScroll);
+    };
+    
+    /**
+     * Feedback visuel: Ombres latérales qui pulsent selon la vitesse
+     * (Micro-interaction pour affordance Premium)
+     */
+    const updateScrollShadows = (velocity) => {
+      if (!container) return;
+      
+      // Calculer opacité des ombres basée sur scroll position ET vitesse
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      const maxScroll = scrollWidth - clientWidth;
+      
+      // Ombre gauche: visible si on a scrollé + intensité selon vitesse vers gauche
+      let leftOpacity = scrollLeft > 10 ? 1 : 0;
+      if (velocity < -1) leftOpacity = Math.min(1, leftOpacity + Math.abs(velocity) / 20);
+      
+      // Ombre droite: visible si pas au max + intensité selon vitesse vers droite
+      let rightOpacity = scrollLeft < maxScroll - 10 ? 1 : 0;
+      if (velocity > 1) rightOpacity = Math.min(1, rightOpacity + Math.abs(velocity) / 20);
+      
+      // Appliquer via CSS custom properties (smooth via transition CSS)
+      container.style.setProperty('--shadow-left-opacity', leftOpacity);
+      container.style.setProperty('--shadow-right-opacity', rightOpacity);
+    };
+    
+    // Démarrer la boucle d'animation RAF (GPU-synced 60fps)
+    rafId = requestAnimationFrame(animateScroll);
     
     // ───────────────────────────────────────────────────────────
-    // CLEANUP FUNCTION (Nettoie Souris + Touch)
+    // CLEANUP FUNCTION (Nettoie événements + RAF)
     // ───────────────────────────────────────────────────────────
     
     window.cleanupDragTracking = () => {
-      document.removeEventListener('mousemove', trackMouse);
-      document.removeEventListener('touchmove', trackTouch); // V1.1: NOUVEAU
-      
-      if (autoScrollIntervalRef.current) {
-        clearInterval(autoScrollIntervalRef.current);
-        autoScrollIntervalRef.current = null;
+      // Arrêter l'animation RAF
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
       
+      // Retirer les listeners
+      document.removeEventListener('mousemove', trackMouse);
+      document.removeEventListener('touchmove', trackTouch);
+      
+      // Reset velocity pour prochain drag
+      currentVelocity = 0;
+      
+      // Nettoyer état global
       delete window.dragMouseX;
-      console.log('🧹 Cleanup drag tracking (souris + tactile)');
+      
+      console.log('🧹 Cleanup Physics-based scroll');
     };
   };
 
   const onDragUpdate = (update) => {
-    // Hook appelé à chaque mouvement, utile pour debug
-    // L'auto-scroll est géré par l'interval dans onDragStart
+    // Hook DnD, l'animation est gérée par RAF dans onDragStart
   };
 
   // ═══════════════════════════════════════════════════════════════
