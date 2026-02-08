@@ -79,6 +79,9 @@ model Property {
   status        PropertyStatus @default(AVAILABLE)
 
   description String?
+  
+  // Images
+  imageUrl String? // URL de la photo principale du bien
 
   // Relations
   applications Application[]
