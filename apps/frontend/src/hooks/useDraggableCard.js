@@ -1,241 +1,140 @@
 import { useEffect, useRef, useState } from 'react';
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
-import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element';
+import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview';
 
-/**
- * useDraggableCard - Hook Native-Driven pour Drag Mobile 60fps
- * 
- * Architecture:
- * - Long Press Protocol (200ms) → Distinction Scroll vs Drag
- * - Native Preview GPU-delegated → 0 charge Thread Principal
- * - Haptic Feedback iOS 18+ (Switch Hack) → Confirmation tactile
- * 
- * @param {Object} candidate - Données du candidat
- * @param {Function} onDrop - Callback drop (optimistic update)
- */
-export const useDraggableCard = (candidate, onDrop) => {
+export function useDraggableCard({ cardId, columnId, candidate, index, onDrop }) {
   const cardRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
-  
-  // Références pour le Long Press Protocol
-  const longPressTimer = useRef(null);
-  const touchStartPos = useRef(null);
-  const isDragEnabled = useRef(false);
-  
-  // Hack Haptique iOS 18+ (Taptic Engine via switch invisible)
-  const hapticSwitchRef = useRef(null);
+  const [dragEnabled, setDragEnabled] = useState(false);
 
   useEffect(() => {
     const card = cardRef.current;
     if (!card) return;
 
-    // ═══════════════════════════════════════════════════════════
-    // DÉTECTION PLATEFORME (iOS vs Android)
-    // ═══════════════════════════════════════════════════════════
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const isAndroid = /Android/.test(navigator.userAgent);
-
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 1: LONG PRESS PROTOCOL (200ms Strict)
-    // ═══════════════════════════════════════════════════════════
-    
-    const handleTouchStart = (e) => {
-      // Enregistrer position initiale
-      const touch = e.touches[0];
-      touchStartPos.current = { x: touch.clientX, y: touch.clientY };
-      isDragEnabled.current = false;
-
-      // Démarrer timer Long Press (200ms)
-      longPressTimer.current = setTimeout(() => {
-        // Délai écoulé → ACTIVER DRAG
-        isDragEnabled.current = true;
-        
-        // ═══════════════════════════════════════════════════════
-        // HAPTIQUE HYBRIDE (iOS vs Android)
-        // ═══════════════════════════════════════════════════════
-        if (isIOS && hapticSwitchRef.current) {
-          // iOS : Utiliser le Switch Hack (Taptic Engine)
-          try {
-            hapticSwitchRef.current.click();
-            console.log('✨ Haptic iOS (Taptic Engine)');
-          } catch (e) {
-            // Fallback silencieux
-          }
-        } else if (isAndroid && 'vibrate' in navigator) {
-          // Android : Vibration API native (plus stable)
-          navigator.vibrate(15); // 15ms pulse
-          console.log('✨ Haptic Android (Vibration API)');
+    const cleanupDnd = draggable({
+      element: card,
+      // Late Binding : Le drag n'est possible que si dragEnabled est true
+      canDrag: () => dragEnabled,
+      getInitialData: () => ({ type: 'candidate-card', cardId, columnId, index, candidate }),
+      onDragStart: (e) => {
+        setIsDragging(true);
+        // FIX API & SAMSUNG : On ne clear PAS les data (ça casse l'API).
+        // On définit un type MIME propriétaire que Android ne sait pas ouvrir.
+        if (e.source.dataTransfer) {
+            e.source.dataTransfer.effectAllowed = 'move';
+            e.source.dataTransfer.setData('application/x-clerivo-secure', 'true');
         }
+        // Petit retour haptique au décollage
+        if (navigator.vibrate) navigator.vibrate(20);
+      },
+      onDrop: ({ location, source }) => {
+        setIsDragging(false);
         
-        console.log('🔒 Drag ACTIVÉ (Long Press validé)');
-      }, 200); // 200ms strict
-    };
+        // Gérer le callback API vers le parent
+        const destination = location.current.dropTargets[0];
+        if (!destination) {
+          console.log('❌ Drop hors zone');
+          return;
+        }
 
-    const handleTouchMove = (e) => {
-      if (!longPressTimer.current) return;
-      
-      const touch = e.touches[0];
-      const deltaX = Math.abs(touch.clientX - touchStartPos.current.x);
-      const deltaY = Math.abs(touch.clientY - touchStartPos.current.y);
-      const totalDelta = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const newStatus = destination.data.columnStatus;
+        const oldStatus = source.data.columnId;
 
-      // Si mouvement > 5px avant 200ms → ANNULER DRAG (c'est un scroll)
-      if (totalDelta > 5) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-        isDragEnabled.current = false;
-        console.log('🚫 Drag annulé (Scroll détecté, delta:', totalDelta.toFixed(1), 'px)');
-      }
-    };
+        if (newStatus === oldStatus) {
+          console.log('⚠️ Drop dans même colonne, ignoré');
+          return;
+        }
 
-    const handleTouchEnd = () => {
-      // Nettoyer timer si touch terminé avant 200ms
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-      }
-      isDragEnabled.current = false;
-    };
-
-    // ═══════════════════════════════════════════════════════════
-    // SAMSUNG SHIELD : Bloquer l'OS Android (DataTransfer Cleaning)
-    // ═══════════════════════════════════════════════════════════
-    const handleDragStart = (e) => {
-      if (!e.dataTransfer) return;
-      
-      // CRITIQUE : Nettoyer le DataTransfer pour que Samsung ne détecte pas "d'export"
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.clearData();
-      
-      // Satisfaire le navigateur sans déclencher l'overlay OS
-      e.dataTransfer.setData('text/plain', 'internal-use-only');
-      
-      console.log('🛡️ Samsung Shield activé (DataTransfer nettoyé)');
-    };
-
-    // Attacher listeners Long Press
-    card.addEventListener('touchstart', handleTouchStart, { passive: true });
-    card.addEventListener('touchmove', handleTouchMove, { passive: true });
-    card.addEventListener('touchend', handleTouchEnd, { passive: true });
-    
-    // Attacher Samsung Shield (dragstart natif)
-    card.addEventListener('dragstart', handleDragStart);
-
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 2: PRAGMATIC DRAG AND DROP (Native-Driven)
-    // ═══════════════════════════════════════════════════════════
-    
-    const cleanup = combine(
-      draggable({
-        element: card,
+        console.log('✅ Drop validé:', oldStatus, '→', newStatus);
         
-        // Données portées par le drag
-        getInitialData: () => ({
-          type: 'candidate-card',
-          candidateId: candidate.id,
-          currentStatus: candidate.applications?.[0]?.status || 'NEW'
-        }),
-
-        // ───────────────────────────────────────────────────────
-        // NATIVE PREVIEW (GPU-Delegated, 60fps)
-        // ───────────────────────────────────────────────────────
-        generateNativeDragPreview: ({ nativeSetDragImage }) => {
-          // Créer un snapshot DOM simplifié (perf optimale)
-          const preview = document.createElement('div');
-          preview.style.cssText = `
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            min-width: 280px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          `;
-          
-          preview.innerHTML = `
-            <div style="font-weight: 600; font-size: 14px; color: #18181b; margin-bottom: 8px;">
-              ${candidate.firstName} ${candidate.lastName}
-            </div>
-            <div style="font-size: 12px; color: #71717a;">
-              ${candidate.monthlyIncome 
-                ? `${Math.round(candidate.monthlyIncome).toLocaleString('fr-CH')} CHF/mois` 
-                : 'Revenu N/D'}
-            </div>
-          `;
-
-          // Déléguer au moteur graphique natif
-          nativeSetDragImage({
-            node: preview,
-            offsetX: 20,
-            offsetY: 20
-          });
-        },
-
-        // ───────────────────────────────────────────────────────
-        // LIFECYCLE CALLBACKS
-        // ───────────────────────────────────────────────────────
-        onDragStart: () => {
-          setIsDragging(true);
-          console.log('🎬 Drag START:', candidate.id);
-        },
-
-        onDrop: ({ location, source }) => {
-          setIsDragging(false);
-          
-          const destination = location.current.dropTargets[0];
-          if (!destination) {
-            console.log('❌ Drop hors zone');
-            return;
-          }
-
-          const newStatus = destination.data.columnStatus;
-          const oldStatus = source.data.currentStatus;
-
-          if (newStatus === oldStatus) {
-            console.log('⚠️ Drop dans même colonne, ignoré');
-            return;
-          }
-
-          console.log('✅ Drop validé:', oldStatus, '→', newStatus);
-          
-          // Callback optimistic update (parent gère l'API)
+        // Callback optimistic update (parent gère l'API)
+        if (onDrop) {
           onDrop({
-            candidateId: candidate.id,
+            candidateId: cardId,
             oldStatus,
             newStatus
           });
         }
-      }),
+      },
+      // FIX DESKTOP : On force une preview opaque et solide (pas de fantôme transparent)
+      generateNativeDragPreview: ({ nativeSetDragImage }) => {
+        setCustomNativeDragPreview({
+          nativeSetDragImage,
+          getOffset: ({ container }) => {
+             // On centre la preview sous le curseur/doigt
+             const rect = container.getBoundingClientRect();
+             return { x: rect.width / 2, y: 40 }; 
+          },
+          render: ({ container }) => {
+            const preview = document.createElement('div');
+            preview.style.width = `${container.clientWidth}px`;
+            preview.style.backgroundColor = 'white'; // Fond blanc opaque
+            preview.style.padding = '16px';
+            preview.style.borderRadius = '12px';
+            preview.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2)'; // Grosse ombre
+            preview.style.opacity = '1'; // Opacité forcée
+            preview.style.display = 'flex';
+            preview.style.flexDirection = 'column';
+            preview.style.gap = '4px';
+            
+            // Contenu minimaliste pour la fluidité 60fps
+            preview.innerHTML = `
+              <div style="font-weight: 700; color: #1f2937; font-size: 14px;">${candidate.attributes?.first_name} ${candidate.attributes?.last_name}</div>
+              <div style="font-size: 12px; color: #6b7280;">${candidate.attributes?.income_currency || ''} ${candidate.attributes?.income || ''}</div>
+            `;
+            return preview;
+          },
+        });
+      },
+    });
 
-      // ───────────────────────────────────────────────────────
-      // AUTO-SCROLL NATIF (PDND built-in, 60fps)
-      // ───────────────────────────────────────────────────────
-      autoScrollForElements({
-        element: card,
-        canScroll: ({ source }) => source.data.type === 'candidate-card',
-        getConfiguration: () => ({
-          maxScrollSpeed: 'fast' // 'standard' | 'fast'
-        })
-      })
-    );
+    // LOGIQUE HYBRIDE : MOUSE vs TOUCH
+    const handlePointerDown = (e) => {
+      // SCÉNARIO 1 : SOURIS (PC)
+      // Activation immédiate, pas de délai, expérience fluide
+      if (e.pointerType === 'mouse') {
+        setDragEnabled(true);
+        return;
+      }
+
+      // SCÉNARIO 2 : TACTILE (Mobile)
+      // Délai de 200ms pour éviter le conflit avec le scroll
+      const timer = setTimeout(() => {
+        setDragEnabled(true);
+        if (navigator.vibrate) navigator.vibrate(10); // Confirmation physique
+      }, 200);
+
+      const cancel = () => {
+        clearTimeout(timer);
+        setDragEnabled(false);
+      };
+      
+      // Si on bouge ou on relâche avant 200ms, c'est un scroll/click, pas un drag
+      card.addEventListener('pointermove', cancel, { once: true });
+      card.addEventListener('pointerup', cancel, { once: true });
+      card.addEventListener('pointercancel', cancel, { once: true });
+      // Important : nettoyer les listeners si le composant démonte pendant l'appui
+      return () => {
+         clearTimeout(timer);
+         card.removeEventListener('pointermove', cancel);
+      };
+    };
+
+    // Bloquer le menu contextuel (clic droit / appui long système)
+    const preventContext = (e) => {
+       if (e.cancelable && e.pointerType !== 'mouse') e.preventDefault();
+    };
+
+    card.addEventListener('pointerdown', handlePointerDown);
+    card.addEventListener('contextmenu', preventContext);
 
     return () => {
-      cleanup();
-      card.removeEventListener('touchstart', handleTouchStart);
-      card.removeEventListener('touchmove', handleTouchMove);
-      card.removeEventListener('touchend', handleTouchEnd);
-      card.removeEventListener('dragstart', handleDragStart);
-      
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-      }
+      cleanupDnd();
+      card.removeEventListener('pointerdown', handlePointerDown);
+      card.removeEventListener('contextmenu', preventContext);
     };
-  }, [candidate, onDrop]);
+  }, [cardId, columnId, index, candidate, dragEnabled, onDrop]);
 
-  return {
-    cardRef,
-    hapticSwitchRef,
-    isDragging
-  };
-};
+  // On retourne l'état pour l'UI (opacité, scale)
+  return { cardRef, isDragging, dragEnabled };
+}

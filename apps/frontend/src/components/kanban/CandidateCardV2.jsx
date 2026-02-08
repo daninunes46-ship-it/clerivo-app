@@ -6,17 +6,23 @@ import { useDraggableCard } from '../../hooks/useDraggableCard';
 /**
  * CandidateCard - Carte candidat PDND Native-Driven (60fps)
  * 
- * Architecture V2:
- * - Long Press Protocol (200ms) → Distinction Scroll vs Drag
- * - Native Preview GPU → 0 charge React
- * - Haptic Feedback iOS 18+ → Confirmation tactile
- * - Suppression totale @hello-pangea/dnd
+ * Architecture V2.3 (Hybrid Input):
+ * - Souris : Drag instantané (0ms, UX Desktop fluide)
+ * - Touch : Long Press 200ms (distinction Scroll vs Drag)
+ * - Late Binding : draggable={dragEnabled} → Samsung Shield absolu
+ * - MIME Stealth : application/x-clerivo-secure (API préservée)
  */
 const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', onOpenMenu, onDrop }) => {
   const navigate = useNavigate();
   
-  // Hook PDND Native-Driven
-  const { cardRef, hapticSwitchRef, isDragging } = useDraggableCard(candidate, onDrop);
+  // Hook PDND Hybrid Input (V2.3)
+  const { cardRef, isDragging, dragEnabled } = useDraggableCard({
+    cardId: candidate.id,
+    columnId: candidate.applications?.[0]?.status || 'NEW',
+    candidate,
+    index,
+    onDrop
+  });
 
   // Extraction des données
   const { firstName, lastName, email, monthlyIncome } = candidate;
@@ -99,61 +105,32 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', on
   const pursuitsBadge = getPursuitsBadge();
   
   return (
-    <>
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* HACK HAPTIQUE iOS 18+ (Switch invisible, Taptic Engine)     */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <input
-        ref={hapticSwitchRef}
-        type="checkbox"
-        role="switch"
-        aria-hidden="true"
-        tabIndex={-1}
-        style={{
-          position: 'absolute',
-          opacity: 0,
-          pointerEvents: 'none',
-          width: 0,
-          height: 0
-        }}
-      />
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* CARTE CANDIDAT (PDND Native-Driven)                         */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div
-        ref={cardRef}
-        onClick={() => {
-          console.log('🔗 Navigation vers candidat:', candidate.id);
-          if (!candidate.id) {
-            console.error('❌ ID candidat manquant');
-            return;
-          }
-          navigate(`/candidates/${candidate.id}`);
-        }}
-        className={`
-          w-full
-          bg-white p-4 rounded-xl shadow-sm border border-zinc-100 
-          border-l-4 ${statusColor}
-          transition-all duration-200 ease-out
-          group cursor-grab active:cursor-grabbing
-          ${isDragging ? 'opacity-50 scale-95' : 'hover:shadow-md'}
-          touch-action-manipulation select-none
-        `}
-        style={{
-          // ═══════════════════════════════════════════════════════
-          // SAMSUNG SHIELD : Bouclier Anti-Overlay Android
-          // ═══════════════════════════════════════════════════════
-          touchAction: 'manipulation',     // Limite les gestures OS
-          WebkitTouchCallout: 'none',      // Bloque menu contextuel
-          userSelect: 'none',              // Bloque sélection texte (CRITIQUE)
-          WebkitUserSelect: 'none',        // Compatibilité WebKit
-          WebkitUserDrag: 'element',       // Force drag natif
-          // @ts-ignore - contextMenu n'est pas dans les types React
-          contextMenu: 'none'              // Désactive clic droit
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-      >
+    <div
+      ref={cardRef}
+      draggable={dragEnabled}
+      onClick={() => {
+        console.log('🔗 Navigation vers candidat:', candidate.id);
+        if (!candidate.id) {
+          console.error('❌ ID candidat manquant');
+          return;
+        }
+        navigate(`/candidates/${candidate.id}`);
+      }}
+      className={`
+        w-full select-none
+        bg-white p-4 rounded-xl shadow-sm border border-zinc-100 
+        border-l-4 ${statusColor}
+        transition-all duration-200 ease-out
+        group cursor-grab active:cursor-grabbing
+        ${isDragging ? 'opacity-50 scale-95' : 'hover:shadow-md'}
+      `}
+      style={{
+        touchAction: 'manipulation',
+        WebkitTouchCallout: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none'
+      }}
+    >
         {/* Header - Nom + Menu Mobile */}
         <div className="flex justify-between items-start mb-3">
           <h4 className="font-bold text-zinc-900 text-sm leading-tight group-hover:text-indigo-600 transition-colors flex-1">
@@ -240,7 +217,6 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', on
           )}
         </div>
       </div>
-    </>
   );
 };
 
