@@ -181,11 +181,11 @@ const PipelinePage = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // AUTO-SCROLL PHYSIQUE pendant Drag (Standard iOS 2026)
-  // V1.2: Velocity-Based Scroll avec Courbe d'Accélération
+  // AUTO-SCROLL PHYSIQUE AGGRESSIVE (V1.3 - Production Ready)
+  // Physique iOS avec puissance maximale + Anti-Saccade
   // ═══════════════════════════════════════════════════════════════
   const onDragStart = (start) => {
-    console.log('🎬 Drag démarré (Physics-based scroll):', start.draggableId);
+    console.log('🎬 Drag démarré (Physics V1.3 - Aggressive):', start.draggableId);
     
     // ───────────────────────────────────────────────────────────
     // TRACKING POSITION : Souris (Desktop) + Touch (Mobile)
@@ -207,47 +207,54 @@ const PipelinePage = () => {
     document.addEventListener('touchmove', trackTouch, { passive: true });
     
     // ───────────────────────────────────────────────────────────
-    // PHYSIQUE DU SCROLL : Velocity-Based avec Courbe Quadratique
+    // PHYSIQUE AGRESSIVE : Velocity-Based avec Courbe Cubique
     // ───────────────────────────────────────────────────────────
     
     const container = scrollContainerRef.current;
     if (!container) return;
     
-    // Configuration de la physique (Inspiré iOS/macOS)
-    const EDGE_ZONE = 120;        // Zone de déclenchement (120px des bords)
-    const MAX_VELOCITY = 25;      // Vitesse maximale (pixels par frame)
-    const EASE_POWER = 2.5;       // Exposant pour courbe d'accélération (2 = quadratique, 3 = cubique)
-    const DAMPING = 0.92;         // Amortissement pour transition douce (0.9-0.95 = naturel)
+    // Configuration AGRESSIVE (Calibrée pour traverser 3 colonnes/seconde)
+    const EDGE_ZONE = 150;        // Zone élargie (150px) → Déclenchement plus tôt
+    const MAX_VELOCITY = 60;      // BOOST x2.4 (25 → 60px/frame) → Puissance maximale
+    const EASE_POWER = 3.5;       // Courbe CUBIQUE+ (3.5) → Différence marquée
+    const DAMPING = 0.85;         // Réactivité élevée (0.85 vs 0.92) → Changement direction rapide
+    const MIN_VELOCITY = 0.5;     // Seuil minimal (évite micro-scroll)
     
-    let currentVelocity = 0;      // Vitesse actuelle (smooth transitions)
+    let currentVelocity = 0;      // Vitesse actuelle avec inertie
     let rafId = null;             // RequestAnimationFrame ID
+    let lastDirection = 0;        // -1 (gauche), 0 (neutre), +1 (droite) → Anti-saccade
     
     /**
-     * Calcul de la vitesse cible avec courbe d'accélération progressive
-     * Formula: velocity = MAX_VELOCITY * (1 - distance/zone)^EASE_POWER
+     * Calcul de la vitesse cible avec courbe CUBIQUE aggressive
+     * Formula: velocity = MAX_VELOCITY * (1 - distance/zone)^3.5
      * 
-     * Comportement:
-     * - Loin du bord (distance élevée) → Vitesse très faible (contrôle précis)
-     * - Proche du bord (distance faible) → Vitesse élevée (navigation rapide)
-     * - Accélération exponentielle → Feel naturel iOS-like
+     * BOOST V1.3:
+     * - Exposant 3.5 (vs 2.5) → Accélération extrême proche du bord
+     * - MAX_VELOCITY 60 (vs 25) → Peut traverser 3 colonnes en ~1 seconde
+     * 
+     * Exemple de vitesses:
+     * - 150px du bord (loin)  : 0.3px/frame   (ultra-précis)
+     * - 75px du bord (moyen)  : 4.2px/frame   (contrôlé)
+     * - 30px du bord (proche) : 28px/frame    (rapide)
+     * - 5px du bord (extrême) : 58px/frame    (VITESSE MAX)
      */
     const calculateTargetVelocity = (mouseX, containerRect) => {
       const { left, right } = containerRect;
       
       // SCROLL DROITE : Souris/doigt dans zone droite
       if (mouseX > right - EDGE_ZONE) {
-        const distanceFromEdge = right - mouseX; // 0 (au bord) → 120px (loin)
-        const normalizedDistance = Math.max(0, Math.min(1, distanceFromEdge / EDGE_ZONE)); // 0 → 1
-        const easedProximity = Math.pow(1 - normalizedDistance, EASE_POWER); // Courbe quadratique/cubique
+        const distanceFromEdge = right - mouseX; // 0 (bord) → 150px (loin)
+        const normalizedDistance = Math.max(0, Math.min(1, distanceFromEdge / EDGE_ZONE));
+        const easedProximity = Math.pow(1 - normalizedDistance, EASE_POWER); // Courbe CUBIQUE+
         return MAX_VELOCITY * easedProximity;
       }
       
       // SCROLL GAUCHE : Souris/doigt dans zone gauche
       if (mouseX < left + EDGE_ZONE) {
-        const distanceFromEdge = mouseX - left; // 0 (au bord) → 120px (loin)
+        const distanceFromEdge = mouseX - left; // 0 (bord) → 150px (loin)
         const normalizedDistance = Math.max(0, Math.min(1, distanceFromEdge / EDGE_ZONE));
         const easedProximity = Math.pow(1 - normalizedDistance, EASE_POWER);
-        return -MAX_VELOCITY * easedProximity; // Négatif pour scroll gauche
+        return -MAX_VELOCITY * easedProximity; // Négatif = gauche
       }
       
       // Hors zone : Aucun scroll
@@ -255,8 +262,8 @@ const PipelinePage = () => {
     };
     
     /**
-     * Boucle d'animation RequestAnimationFrame (60fps natif GPU-synced)
-     * Applique un amortissement (damping) pour transitions douces
+     * Boucle d'animation RAF avec gestion INTELLIGENTE du changement de direction
+     * FIX V1.3: Pas de reset brutal quand on change de direction
      */
     const animateScroll = () => {
       const mouseX = window.dragMouseX;
@@ -265,54 +272,87 @@ const PipelinePage = () => {
         const rect = container.getBoundingClientRect();
         const targetVelocity = calculateTargetVelocity(mouseX, rect);
         
-        // Interpolation lisse vers la vitesse cible (damping)
-        // Formula: current = current * damping + target * (1 - damping)
-        currentVelocity = currentVelocity * DAMPING + targetVelocity * (1 - DAMPING);
+        // ────────────────────────────────────────────────────────
+        // ANTI-SACCADE : Gestion du changement de direction
+        // ────────────────────────────────────────────────────────
+        const currentDirection = targetVelocity > 0 ? 1 : (targetVelocity < 0 ? -1 : 0);
         
-        // Seuil de vélocité minimum (évite micro-scroll imperceptible)
-        if (Math.abs(currentVelocity) > 0.1) {
-          container.scrollLeft += currentVelocity;
+        // Si changement de direction (ex: droite → gauche)
+        if (lastDirection !== 0 && currentDirection !== 0 && lastDirection !== currentDirection) {
+          // Décélérer progressivement (pas de reset brutal à 0)
+          // On utilise un damping PLUS FORT temporairement pour transition douce
+          currentVelocity = currentVelocity * 0.75 + targetVelocity * 0.25;
+          console.log(`🔄 Changement direction (${lastDirection > 0 ? '→' : '←'} vers ${currentDirection > 0 ? '→' : '←'}): Transition douce`);
+        } else {
+          // Direction stable : Interpolation normale
+          currentVelocity = currentVelocity * DAMPING + targetVelocity * (1 - DAMPING);
+        }
+        
+        lastDirection = currentDirection;
+        
+        // ────────────────────────────────────────────────────────
+        // APPLIQUER LE SCROLL (avec vérification des limites)
+        // ────────────────────────────────────────────────────────
+        if (Math.abs(currentVelocity) > MIN_VELOCITY) {
+          const { scrollLeft, scrollWidth, clientWidth } = container;
+          const maxScrollLeft = scrollWidth - clientWidth;
           
-          // Debug (optionnel, désactiver en prod)
-          if (Math.abs(currentVelocity) > 1) {
+          // Nouvelle position de scroll
+          let newScrollLeft = scrollLeft + currentVelocity;
+          
+          // Clamping : Ne pas dépasser les limites (padding compris)
+          newScrollLeft = Math.max(0, Math.min(maxScrollLeft, newScrollLeft));
+          
+          // Appliquer le scroll
+          container.scrollLeft = newScrollLeft;
+          
+          // Debug (verbose pour diagnostic)
+          if (Math.abs(currentVelocity) > 2) {
             const direction = currentVelocity > 0 ? '→' : '←';
-            console.log(`${direction} Physics scroll: ${currentVelocity.toFixed(2)}px/frame`);
+            const atLimit = (newScrollLeft === 0 || newScrollLeft === maxScrollLeft) ? ' [LIMITE]' : '';
+            console.log(`${direction} Physics V1.3: ${currentVelocity.toFixed(1)}px/frame (scroll: ${newScrollLeft.toFixed(0)}/${maxScrollLeft})${atLimit}`);
           }
           
-          // Feedback visuel: Intensifier l'ombre latérale pendant scroll actif
-          updateScrollShadows(currentVelocity);
+          // Feedback visuel: Intensifier ombres pendant scroll rapide
+          updateScrollShadows(currentVelocity, scrollLeft, maxScrollLeft);
         }
       }
       
-      // Continuer l'animation (récursif, s'arrête seulement au cleanup)
+      // Continuer l'animation (récursif, s'arrête au cleanup)
       rafId = requestAnimationFrame(animateScroll);
     };
     
     /**
-     * Feedback visuel: Ombres latérales qui pulsent selon la vitesse
-     * (Micro-interaction pour affordance Premium)
+     * Feedback visuel AMÉLIORÉ : Ombres qui pulsent selon vitesse + direction
+     * V1.3: Plus réactif, intensité basée sur vélocité
      */
-    const updateScrollShadows = (velocity) => {
+    const updateScrollShadows = (velocity, scrollLeft, maxScroll) => {
       if (!container) return;
       
-      // Calculer opacité des ombres basée sur scroll position ET vitesse
-      const { scrollLeft, scrollWidth, clientWidth } = container;
-      const maxScroll = scrollWidth - clientWidth;
+      // Opacité de base (statique)
+      let leftOpacity = scrollLeft > 10 ? 0.6 : 0;
+      let rightOpacity = scrollLeft < maxScroll - 10 ? 0.6 : 0;
       
-      // Ombre gauche: visible si on a scrollé + intensité selon vitesse vers gauche
-      let leftOpacity = scrollLeft > 10 ? 1 : 0;
-      if (velocity < -1) leftOpacity = Math.min(1, leftOpacity + Math.abs(velocity) / 20);
+      // Boost d'intensité selon vitesse (pulsation)
+      const velocityBoost = Math.min(0.4, Math.abs(velocity) / 50); // Max +0.4
       
-      // Ombre droite: visible si pas au max + intensité selon vitesse vers droite
-      let rightOpacity = scrollLeft < maxScroll - 10 ? 1 : 0;
-      if (velocity > 1) rightOpacity = Math.min(1, rightOpacity + Math.abs(velocity) / 20);
+      if (velocity < -2) {
+        // Scroll vers gauche actif → Ombre gauche pulse
+        leftOpacity = Math.min(1, leftOpacity + velocityBoost);
+      }
       
-      // Appliquer via CSS custom properties (smooth via transition CSS)
+      if (velocity > 2) {
+        // Scroll vers droite actif → Ombre droite pulse
+        rightOpacity = Math.min(1, rightOpacity + velocityBoost);
+      }
+      
+      // Appliquer via CSS custom properties (transition douce via CSS)
       container.style.setProperty('--shadow-left-opacity', leftOpacity);
       container.style.setProperty('--shadow-right-opacity', rightOpacity);
     };
     
-    // Démarrer la boucle d'animation RAF (GPU-synced 60fps)
+    // Démarrer la boucle RAF (GPU-synced, 60fps+)
+    console.log('⚡ Physics V1.3 activée: MAX_VEL=60, EASE=3.5, ZONE=150px');
     rafId = requestAnimationFrame(animateScroll);
     
     // ───────────────────────────────────────────────────────────
@@ -320,28 +360,27 @@ const PipelinePage = () => {
     // ───────────────────────────────────────────────────────────
     
     window.cleanupDragTracking = () => {
-      // Arrêter l'animation RAF
+      // Arrêter RAF
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = null;
       }
       
-      // Retirer les listeners
+      // Retirer listeners
       document.removeEventListener('mousemove', trackMouse);
       document.removeEventListener('touchmove', trackTouch);
       
-      // Reset velocity pour prochain drag
+      // Reset état
       currentVelocity = 0;
-      
-      // Nettoyer état global
+      lastDirection = 0;
       delete window.dragMouseX;
       
-      console.log('🧹 Cleanup Physics-based scroll');
+      console.log('🧹 Cleanup Physics V1.3');
     };
   };
 
   const onDragUpdate = (update) => {
-    // Hook DnD, l'animation est gérée par RAF dans onDragStart
+    // Hook DnD, animation gérée par RAF dans onDragStart
   };
 
   // ═══════════════════════════════════════════════════════════════
