@@ -30,8 +30,10 @@ const allowedOrigins = [
   'https://clerivo-frontend.vercel.app',   // URL native Vercel (backup)
   'http://localhost:5173',                 // Dev local Vite
   'http://localhost:3010',                 // Dev local Backend
-  'http://192.168.1.212:3010',            // Réseau local (votre Pi)
-  'http://192.168.1.107:3010'             // Réseau local WiFi
+  'http://192.168.1.212:3010',            // Réseau local (votre Pi) - Backend
+  'http://192.168.1.212:5173',            // Réseau local (votre Pi) - Frontend Vite
+  'http://192.168.1.107:3010',            // Réseau local WiFi - Backend
+  'http://192.168.1.107:5173'             // Réseau local WiFi - Frontend Vite
 ];
 
 const corsOptions = {
