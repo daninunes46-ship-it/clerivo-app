@@ -137,12 +137,14 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', on
           transition-all duration-200 ease-out
           group cursor-grab active:cursor-grabbing
           ${isDragging ? 'opacity-50 scale-95' : 'hover:shadow-md'}
-          touch-action-manipulation
+          touch-action-manipulation select-none
         `}
         style={{
-          // CRITIQUE: touch-action manipulation (pas none!)
-          // Permet scroll natif + long-press drag
-          touchAction: 'manipulation'
+          // CRITIQUE ANDROID: Bloquer overlay Samsung Split-Screen
+          touchAction: 'manipulation',
+          WebkitTouchCallout: 'none', // Bloque menu contextuel système
+          userSelect: 'none',         // Bloque sélection texte
+          WebkitUserSelect: 'none'    // Compatibilité WebKit
         }}
       >
         {/* Header - Nom + Menu Mobile */}

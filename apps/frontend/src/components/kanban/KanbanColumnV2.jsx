@@ -47,7 +47,7 @@ const KanbanColumnV2 = ({
       </div>
 
       {/* Liste des cartes (Virtualisée) */}
-      <div className="flex-1 overflow-hidden bg-zinc-50/50 rounded-b-xl border border-t-0 border-zinc-100">
+      <div className="flex-1 overflow-hidden rounded-b-xl border border-t-0 border-zinc-100 backdrop-blur-sm bg-white/80">
         {candidates.length === 0 ? (
           // Empty state
           <div className="flex items-center justify-center h-full p-4 text-zinc-400 text-sm">
@@ -61,7 +61,7 @@ const KanbanColumnV2 = ({
             totalCount={candidates.length}
             overscan={200} // Précharge 200px avant/après viewport
             itemContent={(index, candidate) => (
-              <div className="p-2">
+              <div className="px-3 py-2 first:pt-3">
                 {renderCard(candidate, index)}
               </div>
             )}
