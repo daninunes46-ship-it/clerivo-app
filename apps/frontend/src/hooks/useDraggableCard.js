@@ -31,6 +31,13 @@ export const useDraggableCard = (candidate, onDrop) => {
     if (!card) return;
 
     // ═══════════════════════════════════════════════════════════
+    // DÉTECTION PLATEFORME (iOS vs Android)
+    // ═══════════════════════════════════════════════════════════
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    // ═══════════════════════════════════════════════════════════
     // PHASE 1: LONG PRESS PROTOCOL (200ms Strict)
     // ═══════════════════════════════════════════════════════════
     
@@ -46,20 +53,20 @@ export const useDraggableCard = (candidate, onDrop) => {
         isDragEnabled.current = true;
         
         // ═══════════════════════════════════════════════════════
-        // HACK HAPTIQUE iOS 18+ (Taptic Engine)
+        // HAPTIQUE HYBRIDE (iOS vs Android)
         // ═══════════════════════════════════════════════════════
-        if (hapticSwitchRef.current) {
+        if (isIOS && hapticSwitchRef.current) {
+          // iOS : Utiliser le Switch Hack (Taptic Engine)
           try {
             hapticSwitchRef.current.click();
-            console.log('✨ Haptic feedback déclenché (iOS Switch Hack)');
+            console.log('✨ Haptic iOS (Taptic Engine)');
           } catch (e) {
-            // Fallback silencieux si échec
+            // Fallback silencieux
           }
-        }
-        
-        // Fallback Android (Vibration API si disponible)
-        if ('vibrate' in navigator) {
-          navigator.vibrate(10); // 10ms pulse
+        } else if (isAndroid && 'vibrate' in navigator) {
+          // Android : Vibration API native (plus stable)
+          navigator.vibrate(15); // 15ms pulse
+          console.log('✨ Haptic Android (Vibration API)');
         }
         
         console.log('🔒 Drag ACTIVÉ (Long Press validé)');
@@ -92,10 +99,29 @@ export const useDraggableCard = (candidate, onDrop) => {
       isDragEnabled.current = false;
     };
 
+    // ═══════════════════════════════════════════════════════════
+    // SAMSUNG SHIELD : Bloquer l'OS Android (DataTransfer Cleaning)
+    // ═══════════════════════════════════════════════════════════
+    const handleDragStart = (e) => {
+      if (!e.dataTransfer) return;
+      
+      // CRITIQUE : Nettoyer le DataTransfer pour que Samsung ne détecte pas "d'export"
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.clearData();
+      
+      // Satisfaire le navigateur sans déclencher l'overlay OS
+      e.dataTransfer.setData('text/plain', 'internal-use-only');
+      
+      console.log('🛡️ Samsung Shield activé (DataTransfer nettoyé)');
+    };
+
     // Attacher listeners Long Press
     card.addEventListener('touchstart', handleTouchStart, { passive: true });
     card.addEventListener('touchmove', handleTouchMove, { passive: true });
     card.addEventListener('touchend', handleTouchEnd, { passive: true });
+    
+    // Attacher Samsung Shield (dragstart natif)
+    card.addEventListener('dragstart', handleDragStart);
 
     // ═══════════════════════════════════════════════════════════
     // PHASE 2: PRAGMATIC DRAG AND DROP (Native-Driven)
@@ -199,6 +225,7 @@ export const useDraggableCard = (candidate, onDrop) => {
       card.removeEventListener('touchstart', handleTouchStart);
       card.removeEventListener('touchmove', handleTouchMove);
       card.removeEventListener('touchend', handleTouchEnd);
+      card.removeEventListener('dragstart', handleDragStart);
       
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);

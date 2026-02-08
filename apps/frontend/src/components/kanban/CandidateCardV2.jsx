@@ -132,6 +132,7 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', on
           navigate(`/candidates/${candidate.id}`);
         }}
         className={`
+          w-full
           bg-white p-4 rounded-xl shadow-sm border border-zinc-100 
           border-l-4 ${statusColor}
           transition-all duration-200 ease-out
@@ -140,12 +141,18 @@ const CandidateCard = ({ candidate, index, statusColor = 'border-l-zinc-200', on
           touch-action-manipulation select-none
         `}
         style={{
-          // CRITIQUE ANDROID: Bloquer overlay Samsung Split-Screen
-          touchAction: 'manipulation',
-          WebkitTouchCallout: 'none', // Bloque menu contextuel système
-          userSelect: 'none',         // Bloque sélection texte
-          WebkitUserSelect: 'none'    // Compatibilité WebKit
+          // ═══════════════════════════════════════════════════════
+          // SAMSUNG SHIELD : Bouclier Anti-Overlay Android
+          // ═══════════════════════════════════════════════════════
+          touchAction: 'manipulation',     // Limite les gestures OS
+          WebkitTouchCallout: 'none',      // Bloque menu contextuel
+          userSelect: 'none',              // Bloque sélection texte (CRITIQUE)
+          WebkitUserSelect: 'none',        // Compatibilité WebKit
+          WebkitUserDrag: 'element',       // Force drag natif
+          // @ts-ignore - contextMenu n'est pas dans les types React
+          contextMenu: 'none'              // Désactive clic droit
         }}
+        onContextMenu={(e) => e.preventDefault()}
       >
         {/* Header - Nom + Menu Mobile */}
         <div className="flex justify-between items-start mb-3">
