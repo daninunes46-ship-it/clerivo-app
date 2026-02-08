@@ -1,416 +1,795 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { 
+  Loader2, 
+  Building2, 
+  MapPin, 
+  TrendingUp, 
+  CheckCircle2, 
+  Clock, 
+  LayoutGrid, 
+  List, 
+  Filter,
+  MoreHorizontal,
+  Phone,
+  Mail,
+  Eye,
+  X,
+  ShieldCheck,
+  AlertTriangle,
+  ChevronRight,
+  Calendar,
+  Briefcase,
+  User,
+  FileText,
+  Ban,
+  Download,
+  UploadCloud,
+  Send,
+  Sparkles,
+  ArrowRightLeft,
+  Copy
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import KanbanColumnV2 from '../components/kanban/KanbanColumnV2';
-import CandidateCardV2 from '../components/kanban/CandidateCardV2';
-import MoveToMenu from '../components/kanban/MoveToMenu';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-/**
- * PipelinePage V3.0 - "Clean Luxury" Edition
- * - Mobile : Tabs + Liste Verticale (Fluidité Native)
- * - Desktop : Swimlanes par Bien (Property-Centric)
- * - Design : Premium sans lourdeur
- */
-const PipelinePageV2 = () => {
-  const navigate = useNavigate();
-  const [candidates, setCandidates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
+// --- COMPOSANT: DRAWER LATÉRAL (Swiss Safe + Chronos + SmartMatch) ---
+const PipelineDrawer = ({ candidate, isOpen, onClose }) => {
+  if (!candidate) return null;
   
-  // 📱 ÉTAT MOBILE : Onglet actif
-  const [activeTab, setActiveTab] = useState('nouveaux');
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('profil'); // 'profil' | 'documents' | 'smart-match'
+  const [showScheduler, setShowScheduler] = useState(false); // Mode Chronos
+  const [selectedSlot, setSelectedSlot] = useState(null);
 
-  // Configuration des colonnes
-  const COLUMNS = {
-    nouveaux: {
-      id: 'nouveaux',
-      title: 'Nouveaux',
-      statuses: ['NEW', 'TO_QUALIFY'],
-      color: { 
-        bg: 'bg-indigo-500',
-        text: 'text-indigo-600', 
-        cardBorder: 'border-l-indigo-500',
-        bgLight: 'bg-indigo-50'
-      },
-    },
-    visites: {
-      id: 'visites',
-      title: 'Visites',
-      statuses: ['VISIT_SCHEDULED', 'VISIT_DONE'],
-      color: { 
-        bg: 'bg-purple-500',
-        text: 'text-purple-600', 
-        cardBorder: 'border-l-purple-500',
-        bgLight: 'bg-purple-50'
-      },
-    },
-    enCours: {
-      id: 'enCours',
-      title: 'En cours',
-      statuses: ['DOSSIER_INCOMPLETE', 'DOSSIER_PENDING'],
-      color: { 
-        bg: 'bg-amber-500',
-        text: 'text-amber-600', 
-        cardBorder: 'border-l-amber-500',
-        bgLight: 'bg-amber-50'
-      },
-    },
-    prets: {
-      id: 'prets',
-      title: 'Prêts',
-      statuses: ['DOSSIER_READY'],
-      color: { 
-        bg: 'bg-emerald-500',
-        text: 'text-emerald-600', 
-        cardBorder: 'border-l-emerald-500',
-        bgLight: 'bg-emerald-50'
-      },
-    },
-    decision: {
-      id: 'decision',
-      title: 'Décision',
-      statuses: ['TRANSMITTED', 'UNDER_REVIEW', 'RETAINED', 'REJECTED', 'ARCHIVED'],
-      color: { 
-        bg: 'bg-cyan-500',
-        text: 'text-cyan-600', 
-        cardBorder: 'border-l-cyan-500',
-        bgLight: 'bg-cyan-50'
-      },
+  const app = candidate.applications?.[0] || {};
+  const prop = app.property;
+  
+  // Formatage Données
+  const income = candidate.income || 0;
+  const rent = prop?.rent || 0;
+  const effortRate = income > 0 && rent > 0 ? ((rent / income) * 100).toFixed(0) : 0;
+  const solvencyScore = candidate.aiScore || 0;
+  const isRisky = solvencyScore < 50;
+
+  // Mock Smart Re-Match (Opportunité Cross-Selling)
+  // Si le candidat a un bon revenu mais n'est pas sur ce bien, on propose un autre bien
+  const smartMatchOpportunity = income > 8000 ? {
+    id: 'opp-1',
+    title: 'Loft Eaux-Vives',
+    matchScore: 96,
+    rent: 3200,
+    reason: 'Revenus compatibles (34% taux effort) et recherche secteur lac.'
+  } : null;
+
+  // Mock Documents (Swiss Safe)
+  const documents = [
+    { id: 1, name: 'Extrait des Poursuites', status: candidate.poursuitesStatus === 'ALERTE' ? 'INVALID' : 'VALID', date: '05.02.2026' },
+    { id: 2, name: 'Fiche Salaire (Jan)', status: 'VALID', date: '01.02.2026' },
+    { id: 3, name: 'Fiche Salaire (Déc)', status: 'VALID', date: '01.01.2026' },
+    { id: 4, name: 'Pièce d\'Identité', status: 'VALID', date: '12.01.2026' },
+    { id: 5, name: 'Attestation RC', status: 'MISSING', date: '-' },
+  ];
+
+  const handleEmailAction = () => {
+    if (candidate.email) {
+      navigate(`/inbox?search=${encodeURIComponent(candidate.email)}`);
+      toast.info(`Recherche des échanges avec ${candidate.firstName}...`);
+    } else {
+      toast.error("Aucun email renseigné pour ce candidat");
     }
   };
 
-  const COLUMN_ORDER = ['nouveaux', 'visites', 'enCours', 'prets', 'decision'];
-
-  // Fetch candidats
-  useEffect(() => {
-    fetchCandidates();
-    
-    const handleCandidateAdded = () => {
-      console.log('📢 Nouveau candidat, refresh');
-      fetchCandidates();
-    };
-    
-    window.addEventListener('candidateAdded', handleCandidateAdded);
-    return () => window.removeEventListener('candidateAdded', handleCandidateAdded);
-  }, []);
-
-  const fetchCandidates = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch(`${API_URL}/api/candidates`);
-      
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result.success && result.data) {
-        setCandidates(result.data);
-        console.log(`✅ ${result.data.length} candidats chargés`);
-      } else {
-        setCandidates([]);
-      }
-    } catch (err) {
-      console.error('❌ Erreur fetch:', err);
-      setError("Impossible de charger le pipeline");
-      toast.error("Erreur de chargement");
-    } finally {
-      setLoading(false);
-    }
+  const handleRequestDocument = (docName) => {
+    toast.success(`Demande pour "${docName}" envoyée par email à ${candidate.firstName}`);
   };
 
-  // Grouper candidats par colonne
-  const getCandidatesByColumn = (columnId) => {
-    const column = COLUMNS[columnId];
-    if (!column) return [];
+  const handleSendInvite = () => {
+    if (!selectedSlot) {
+      toast.error("Veuillez sélectionner un créneau de visite.");
+      return;
+    }
+    toast.success(`Invitation envoyée à ${candidate.firstName} pour le ${selectedSlot}`);
+    setShowScheduler(false);
+  };
 
-    return candidates.filter(candidate => {
-      let status = 'NEW';
+  const handleSmartMatch = () => {
+    toast.success(`Dossier de ${candidate.firstName} dupliqué vers "${smartMatchOpportunity.title}" !`);
+  };
 
-      if (candidate.applications && candidate.applications.length > 0) {
-        const activeApp = candidate.applications.find(
-          app => !['REJECTED', 'ARCHIVED', 'WITHDRAWN'].includes(app.status)
-        );
+  return (
+    <>
+      {/* Backdrop */}
+      <div 
+        className={`fixed inset-0 bg-zinc-900/30 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+
+      {/* Panneau Coulissant */}
+      <div className={`
+        fixed top-2 bottom-2 right-2 w-full md:w-[520px] bg-white z-50 shadow-2xl rounded-2xl border border-zinc-100 overflow-hidden flex flex-col
+        transition-transform duration-300 ease-out transform
+        ${isOpen ? 'translate-x-0' : 'translate-x-[110%]'}
+      `}>
         
-        if (activeApp) {
-          status = activeApp.status;
-        } else {
-          status = candidate.applications[0].status;
-        }
-      }
-      
-      return column.statuses.includes(status);
-    });
-  };
+        {/* HEADER: Identité & Contact */}
+        <div className="relative bg-white border-b border-zinc-50 p-6 pb-0 shrink-0">
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 bg-zinc-50 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 rounded-full transition-colors"
+          >
+            <X size={18} />
+          </button>
 
-  // 🏠 Grouper candidats par Bien (pour Desktop Swimlanes)
-  const groupCandidatesByProperty = () => {
-    const grouped = {};
-    
-    candidates.forEach(candidate => {
-      const app = candidate.applications?.[0] || {};
-      const property = app.property || {};
-      const propertyId = property.id || 'general';
-      const propertyTitle = property.title || property.address || 'Recherche Générale';
-      
-      if (!grouped[propertyId]) {
-        grouped[propertyId] = {
-          id: propertyId,
-          title: propertyTitle,
-          candidates: []
-        };
-      }
-      
-      grouped[propertyId].candidates.push(candidate);
-    });
-    
-    return Object.values(grouped);
-  };
-
-  // Drag & Drop Handler
-  const handleDrop = async ({ candidateId, oldStatus, newStatus }) => {
-    console.log(`🔄 Optimistic update: ${candidateId} (${oldStatus} → ${newStatus})`);
-
-    const oldCandidates = [...candidates];
-    
-    setCandidates(prevCandidates => {
-      return prevCandidates.map(candidate => {
-        if (candidate.id === candidateId) {
-          const updatedApplications = candidate.applications.length > 0
-            ? candidate.applications.map((app, idx) => (idx === 0 ? { ...app, status: newStatus } : app))
-            : [{ status: newStatus, candidateId, readinessStatus: 'INCOMPLETE', priority: 'MEDIUM', source: 'V3' }];
-          return { ...candidate, applications: updatedApplications };
-        }
-        return candidate;
-      });
-    });
-
-    toast.info(`Déplacement vers "${COLUMNS[Object.keys(COLUMNS).find(key => COLUMNS[key].statuses.includes(newStatus))]?.title}"`, {
-      description: 'Mise à jour en cours...'
-    });
-
-    try {
-      const candidate = oldCandidates.find(c => c.id === candidateId);
-      const applicationId = candidate?.applications?.[0]?.id;
-      
-      if (!applicationId) {
-        throw new Error('Aucune application trouvée');
-      }
-
-      const response = await fetch(`${API_URL}/api/applications/${applicationId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Erreur HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success('✅ Candidat déplacé !');
-      } else {
-        throw new Error(data.message || 'Erreur inconnue');
-      }
-    } catch (error) {
-      console.error('❌ Erreur API:', error);
-      setCandidates(oldCandidates);
-      toast.error('❌ Erreur', {
-        description: 'Impossible de mettre à jour. Réessayez.'
-      });
-    }
-  };
-
-  // Menu Mobile Handlers
-  const handleOpenMenu = (candidate) => {
-    setSelectedCandidate(candidate);
-  };
-
-  const handleCloseMenu = () => {
-    setSelectedCandidate(null);
-  };
-
-  const handleMoveFromMenu = async (candidateId, newStatus) => {
-    const candidate = candidates.find(c => c.id === candidateId);
-    if (!candidate) return;
-
-    const oldStatus = candidate.applications?.[0]?.status || 'NEW';
-    
-    await handleDrop({ candidateId, oldStatus, newStatus });
-    handleCloseMenu();
-  };
-
-  const handleDeleteFromMenu = async (candidateId) => {
-    try {
-      const response = await fetch(`${API_URL}/api/candidates/${candidateId}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur suppression');
-      }
-
-      setCandidates(prev => prev.filter(c => c.id !== candidateId));
-      toast.success('✅ Candidat supprimé');
-    } catch (error) {
-      console.error('❌ Erreur suppression:', error);
-      toast.error('Impossible de supprimer');
-      throw error;
-    }
-  };
-
-  const handleViewDetailsFromMenu = (candidateId) => {
-    navigate(`/candidates/${candidateId}`);
-  };
-
-  // 📱 RENDU MOBILE : Tabs + Liste Verticale
-  const renderMobileView = () => {
-    const columnCandidates = getCandidatesByColumn(activeTab);
-    const activeColumn = COLUMNS[activeTab];
-
-    return (
-      <div className="h-full flex flex-col">
-        {/* Barre d'Onglets Sticky */}
-        <div className="sticky top-0 z-20 bg-white border-b border-zinc-100 shadow-sm">
-          <div className="flex overflow-x-auto scrollbar-none px-4 py-3 gap-2">
-            {COLUMN_ORDER.map(columnId => {
-              const column = COLUMNS[columnId];
-              const count = getCandidatesByColumn(columnId).length;
-              const isActive = activeTab === columnId;
-              
-              return (
-                <button
-                  key={columnId}
-                  onClick={() => setActiveTab(columnId)}
-                  className={`
-                    flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap
-                    font-medium text-sm transition-all duration-200
-                    ${isActive 
-                      ? `${column.color.bgLight} ${column.color.text} shadow-sm` 
-                      : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
-                    }
-                  `}
-                >
-                  {column.title}
-                  <span className={`
-                    px-1.5 py-0.5 rounded-full text-xs font-bold tabular-nums
-                    ${isActive ? 'bg-white/50' : 'bg-zinc-200'}
-                  `}>
-                    {count}
+          <div className="flex gap-5 mb-6">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-50 to-zinc-50 border border-zinc-100 flex items-center justify-center text-2xl font-bold text-indigo-900 shadow-sm shrink-0">
+              {candidate.firstName?.[0]}{candidate.lastName?.[0]}
+            </div>
+            
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-xl font-bold text-zinc-900 truncate">
+                  {candidate.firstName} {candidate.lastName}
+                </h2>
+                {candidate.isRisky && (
+                  <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-[10px] font-bold uppercase tracking-wider rounded border border-rose-100">
+                    Alerte
                   </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Liste Verticale des Candidats */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <KanbanColumnV2
-            columnId={activeTab}
-            title={activeColumn.title}
-            count={columnCandidates.length}
-            colorClass={activeColumn.color}
-            candidates={columnCandidates}
-            isMobileView={true}
-            renderCard={(candidate, index) => (
-              <CandidateCardV2
-                key={candidate.id}
-                candidate={candidate}
-                index={index}
-                statusColor={activeColumn.color.cardBorder}
-                onOpenMenu={handleOpenMenu}
-                onDrop={handleDrop}
-                isMobileView={true}
-              />
-            )}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // 🖥️ RENDU DESKTOP : Vue par colonne (classique pour V3.0)
-  const renderDesktopView = () => {
-    return (
-      <div className="h-full overflow-x-auto">
-        <div className="flex gap-4 h-full min-w-max px-4 pb-4">
-          {COLUMN_ORDER.map((columnId) => {
-            const column = COLUMNS[columnId];
-            const columnCandidates = getCandidatesByColumn(columnId);
-
-            return (
-              <KanbanColumnV2
-                key={column.id}
-                columnId={columnId}
-                title={column.title}
-                count={columnCandidates.length}
-                colorClass={column.color}
-                candidates={columnCandidates}
-                renderCard={(candidate, index) => (
-                  <CandidateCardV2
-                    key={candidate.id}
-                    candidate={candidate}
-                    index={index}
-                    statusColor={column.color.cardBorder}
-                    onOpenMenu={handleOpenMenu}
-                    onDrop={handleDrop}
-                  />
                 )}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+              </div>
+              
+              <div className="flex flex-col gap-1 text-sm text-zinc-500">
+                <div className="flex items-center gap-2">
+                  <Mail size={14} className="text-zinc-400" />
+                  <span className="truncate select-all">{candidate.email || "email@non-renseigne.com"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="text-zinc-400" />
+                  <span className="select-all">{candidate.phone || "+41 7X XXX XX XX"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="h-[calc(100vh-140px)] w-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-zinc-500">
-          <Loader2 size={32} className="animate-spin text-indigo-500" />
-          <p className="text-sm font-medium">Chargement du pipeline...</p>
+          {/* ACTIONS RAPIDES (Modifiées pour Chronos) */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <button 
+              onClick={() => setShowScheduler(!showScheduler)} 
+              className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border transition-colors text-xs font-bold ${showScheduler ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-zinc-50 hover:bg-zinc-100 border-zinc-100 text-zinc-600'}`}
+            >
+              <Calendar size={16} /> {showScheduler ? 'Annuler' : 'Visite'}
+            </button>
+            <button onClick={handleEmailAction} className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 text-xs font-bold text-zinc-600 transition-colors">
+              <Mail size={16} /> Email
+            </button>
+            <button onClick={() => toast.info("Appel lancé...")} className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 text-xs font-bold text-zinc-600 transition-colors">
+              <Phone size={16} /> Appeler
+            </button>
+          </div>
+
+          {/* ONGLETS DE NAVIGATION */}
+          {!showScheduler && (
+            <div className="flex gap-6 border-b border-zinc-100">
+              <button 
+                onClick={() => setActiveTab('profil')}
+                className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'profil' ? 'text-indigo-600' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                Vue d'ensemble
+                {activeTab === 'profil' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
+              </button>
+              <button 
+                onClick={() => setActiveTab('documents')}
+                className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'documents' ? 'text-indigo-600' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                Swiss Safe (Docs)
+                {activeTab === 'documents' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
+              </button>
+              <button 
+                onClick={() => setActiveTab('smart-match')}
+                className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${activeTab === 'smart-match' ? 'text-indigo-600' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                Smart Match
+                <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded">2</span>
+                {activeTab === 'smart-match' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* SCROLLABLE CONTENT */}
+        <div className="flex-1 overflow-y-auto bg-white p-6 space-y-8 relative">
+          
+          {/* --- MODULE CHRONOS EXPRESS --- */}
+          {showScheduler ? (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 mb-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg">
+                    <Calendar size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-indigo-900">Chronos Express</h3>
+                    <p className="text-xs text-indigo-600">Planifiez une visite en 1 clic</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Créneaux Disponibles (Suggérés par IA)</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {['Mardi 11 Fév • 14:00 - 14:15', 'Mardi 11 Fév • 14:15 - 14:30', 'Jeudi 13 Fév • 09:00 - 09:15'].map((slot, i) => (
+                    <button 
+                      key={i}
+                      onClick={() => setSelectedSlot(slot)}
+                      className={`p-4 rounded-xl border text-left transition-all ${selectedSlot === slot ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600' : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-600'}`}
+                    >
+                      <span className="font-bold text-sm block">{slot}</span>
+                      <span className="text-xs opacity-70">Visite groupée (5 participants max)</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-4 border-t border-zinc-100">
+                  <button 
+                    onClick={handleSendInvite}
+                    className="w-full py-3 bg-zinc-900 text-white font-bold rounded-xl shadow-lg shadow-zinc-900/20 hover:bg-zinc-800 transition-transform active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Send size={16} /> Envoyer l'invitation
+                  </button>
+                  <p className="text-center text-[10px] text-zinc-400 mt-3">
+                    Un lien sécurisé sera envoyé par SMS et Email au candidat.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* --- SMART RE-MATCH BANNER --- */}
+              {activeTab === 'profil' && smartMatchOpportunity && (
+                <div className="bg-gradient-to-r from-zinc-900 to-indigo-900 rounded-2xl p-5 text-white shadow-xl shadow-indigo-900/20 relative overflow-hidden group cursor-pointer hover:scale-[1.02] transition-transform" onClick={handleSmartMatch}>
+                  <div className="absolute top-0 right-0 p-3 opacity-10">
+                    <Sparkles size={80} />
+                  </div>
+                  <div className="flex items-start gap-4 relative z-10">
+                    <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                      <ArrowRightLeft size={20} className="text-indigo-200" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-bold text-sm text-indigo-100 uppercase tracking-wide">Opportunité Détectée</h4>
+                        <span className="bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">
+                          {smartMatchOpportunity.matchScore}% Match
+                        </span>
+                      </div>
+                      <p className="font-bold text-lg mb-1">{smartMatchOpportunity.title}</p>
+                      <p className="text-indigo-200 text-xs leading-relaxed mb-3">
+                        {smartMatchOpportunity.reason}
+                      </p>
+                      <button className="bg-white text-indigo-900 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm hover:bg-indigo-50 transition-colors">
+                        <Copy size={12} /> Dupliquer le dossier vers ce bien
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VUE PROFIL */}
+              {activeTab === 'profil' && (
+                <>
+                  {/* Stats Financières */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mb-1">Revenu Net</p>
+                      <p className="text-base font-bold text-zinc-900">
+                        {income > 0 ? `${income.toLocaleString('fr-CH')}.-` : 'Non déclaré'}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mb-1">Taux d'effort</p>
+                      <p className={`text-base font-bold ${effortRate > 35 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {effortRate > 0 ? `${effortRate}%` : '-'}
+                      </p>
+                    </div>
+                    <div className={`p-3 rounded-xl border flex flex-col items-center justify-center relative overflow-hidden ${isRisky ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+                      <div className="absolute inset-0 opacity-10">
+                        <ShieldCheck size={60} className="absolute -right-2 -bottom-2" />
+                      </div>
+                      <p className="text-[10px] uppercase tracking-wider font-bold mb-0 z-10">Score IA</p>
+                      <p className="text-xl font-black z-10">{solvencyScore}/100</p>
+                    </div>
+                  </div>
+
+                  {/* Détails Pro */}
+                  <section>
+                    <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">
+                      <Briefcase size={14} />
+                      Situation
+                    </h3>
+                    <div className="bg-white border border-zinc-100 rounded-2xl p-4 shadow-sm grid grid-cols-2 gap-y-4 gap-x-8">
+                      <div>
+                        <p className="text-[10px] text-zinc-400 font-medium mb-1">Profession</p>
+                        <p className="text-sm font-medium text-zinc-900">{candidate.jobType || "Non déclaré"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-zinc-400 font-medium mb-1">Employeur</p>
+                        <p className="text-sm font-medium text-zinc-900">{candidate.employer || "Non déclaré"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-zinc-400 font-medium mb-1">État Civil</p>
+                        <span className="inline-flex items-center px-2 py-1 rounded bg-zinc-100 text-zinc-600 text-xs font-bold">
+                          {candidate.civilStatus || "SINGLE"}
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Analyse IA */}
+                  <section>
+                    <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">
+                      <AlertTriangle size={14} />
+                      Analyse de Risque
+                    </h3>
+                    <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-100 text-sm text-zinc-600 leading-relaxed italic">
+                      "{candidate.aiReason || "Dossier standard. Aucun risque majeur détecté, mais vérifier les références employeur."}"
+                    </div>
+                  </section>
+                </>
+              )}
+
+              {/* VUE SWISS SAFE (DOCUMENTS) */}
+              {activeTab === 'documents' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start gap-3">
+                    <ShieldCheck className="text-indigo-600 shrink-0 mt-0.5" size={18} />
+                    <div>
+                      <h4 className="text-sm font-bold text-indigo-900">Coffre-fort Swiss Safe</h4>
+                      <p className="text-xs text-indigo-700 mt-1">
+                        Les documents sont stockés de manière sécurisée (AES-256). Seul l'agent assigné peut les consulter.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {documents.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 bg-white border border-zinc-100 rounded-xl hover:border-zinc-200 transition-colors group">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            doc.status === 'VALID' ? 'bg-emerald-50 text-emerald-600' :
+                            doc.status === 'INVALID' ? 'bg-rose-50 text-rose-600' :
+                            'bg-zinc-100 text-zinc-400'
+                          }`}>
+                            <FileText size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900">{doc.name}</p>
+                            <p className="text-xs text-zinc-400">Ajouté le {doc.date}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {doc.status === 'MISSING' ? (
+                            <button 
+                              onClick={() => handleRequestDocument(doc.name)}
+                              className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-100 flex items-center gap-1.5"
+                            >
+                              <Send size={12} /> Demander
+                            </button>
+                          ) : (
+                            <div className="flex gap-1">
+                              <button className="p-2 text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                <Eye size={16} />
+                              </button>
+                              <button className="p-2 text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                <Download size={16} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button className="w-full py-3 mt-4 border-2 border-dashed border-zinc-200 rounded-xl text-zinc-400 text-sm font-bold hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2">
+                    <UploadCloud size={18} />
+                    Ajouter un document manuellement
+                  </button>
+                </div>
+              )}
+
+              {/* VUE SMART MATCH */}
+              {activeTab === 'smart-match' && (
+                <div className="space-y-4">
+                  {/* Header Opportunités Cross-Selling */}
+                  <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl">🤝</div>
+                      <div>
+                        <h4 className="text-sm font-bold text-zinc-900 mb-1">Opportunités Cross-Selling</h4>
+                        <p className="text-xs text-zinc-600 leading-relaxed">
+                          L'IA a détecté que le profil de {candidate.firstName} correspond fortement à d'autres biens de votre portefeuille. Ne passez pas ce dessus!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section Title */}
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-indigo-500" />
+                    <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Suggestions IA</h5>
+                  </div>
+
+                  {/* Liste de Cartes Horizontales */}
+                  <div className="space-y-3">
+                    {/* Carte 1 - Loft Eaux-Vives */}
+                    <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden hover:shadow-md transition-all cursor-pointer">
+                      <div className="flex items-center gap-3 p-3">
+                        {/* Image */}
+                        <div className="w-16 h-16 rounded-lg overflow-hidden bg-zinc-100 shrink-0">
+                          <img 
+                            src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&q=80&w=100" 
+                            alt="Loft"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        
+                        {/* Infos */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between mb-1">
+                            <h6 className="font-bold text-sm text-zinc-900 truncate">Loft Eaux-Vives</h6>
+                            <span className="bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded ml-2 shrink-0">
+                              96% MATCH
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-600 font-medium mb-2">2200 CHF/mois</p>
+                          <button className="bg-zinc-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-1">
+                            <Eye size={11} /> Proposer ce bien
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Carte 2 - Studio Gare Cornavin */}
+                    <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden hover:shadow-md transition-all cursor-pointer">
+                      <div className="flex items-center gap-3 p-3">
+                        {/* Image */}
+                        <div className="w-16 h-16 rounded-lg overflow-hidden bg-zinc-100 shrink-0">
+                          <img 
+                            src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=100" 
+                            alt="Studio"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        
+                        {/* Infos */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between mb-1">
+                            <h6 className="font-bold text-sm text-zinc-900 truncate">Studio Gare Cornavin</h6>
+                            <span className="bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded ml-2 shrink-0">
+                              62% MATCH
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-600 font-medium mb-2">1800 CHF/mois</p>
+                          <button className="bg-zinc-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-1">
+                            <Eye size={11} /> Proposer ce bien
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+
+        {/* Footer Actions */}
+        {!showScheduler && (
+          <div className="p-4 border-t border-zinc-100 bg-white shrink-0 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+            <button className="p-3 rounded-xl border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 transition-colors">
+              <MoreHorizontal size={20} />
+            </button>
+            <button className="flex-1 py-3 bg-white border border-rose-100 text-rose-600 font-bold rounded-xl hover:bg-rose-50 transition-colors text-sm">
+              Refuser
+            </button>
+            <button className="flex-1 py-3 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 shadow-lg shadow-zinc-900/10 transition-transform active:scale-95 text-sm flex items-center justify-center gap-2">
+              Voir Fiche Complète <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+// --- COMPOSANT UI: CARTE (Optimisé) ---
+
+const PropertyThumbnail = ({ property }) => {
+  if (!property) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold border border-amber-100/50 w-full hover:bg-amber-100 transition-colors cursor-pointer">
+        <AlertTriangle size={12} />
+        <span>À Assigner</span>
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100vh-140px)] w-full font-sans bg-zinc-50/30 relative">
-      {/* Mobile : Tabs + Liste */}
-      <div className="md:hidden h-full">
-        {renderMobileView()}
+    <div className="flex items-center gap-3 px-2 py-1.5 bg-zinc-50 rounded-lg border border-zinc-100/50 w-full group-hover:bg-zinc-100 transition-colors">
+      <div className="w-8 h-8 rounded-md bg-zinc-200 overflow-hidden shrink-0 relative">
+        {property.image ? (
+          <img src={property.image} className="w-full h-full object-cover" alt="miniature" />
+        ) : (
+          <Building2 size={14} className="text-zinc-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        )}
       </div>
-
-      {/* Desktop : Colonnes classiques */}
-      <div className="hidden md:block h-full">
-        {renderDesktopView()}
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold text-zinc-700 truncate">{property.title}</p>
+        <p className="text-[9px] text-zinc-400 truncate">{property.rent} CHF</p>
       </div>
+    </div>
+  );
+};
 
-      {/* Menu Mobile Contextuel */}
-      {selectedCandidate && (
-        <MoveToMenu
-          candidate={selectedCandidate}
-          currentStatus={selectedCandidate.applications?.[0]?.status || 'NEW'}
-          columns={Object.values(COLUMNS)}
-          onMove={handleMoveFromMenu}
-          onViewDetails={handleViewDetailsFromMenu}
-          onDelete={handleDeleteFromMenu}
-          onClose={handleCloseMenu}
-        />
+const CandidateCard = ({ candidate, index, showPropertyContext, onClick }) => {
+  const application = candidate.applications?.[0] || {};
+  const property = application.property;
+  const income = candidate.income || 0;
+  
+  const rent = property?.rent || 0;
+  const coverageRatio = rent > 0 ? (income / rent).toFixed(1) : null;
+  const isHealthy = coverageRatio && coverageRatio >= 3.0;
+
+  return (
+    <Draggable draggableId={String(candidate.id)} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          style={{ ...provided.draggableProps.style }}
+          onClick={() => onClick(candidate)}
+          className={`
+            group relative bg-white rounded-2xl p-3.5 mb-3
+            border border-zinc-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]
+            hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:border-indigo-100
+            transition-all duration-300 ease-out cursor-grab active:cursor-grabbing
+            ${snapshot.isDragging ? 'shadow-2xl rotate-2 scale-105 z-50 ring-2 ring-indigo-500/20' : ''}
+          `}
+        >
+          <div className="absolute -top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 z-20">
+            <button className="w-7 h-7 bg-white rounded-full shadow-md border border-zinc-100 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:scale-110 transition-transform">
+              <Phone size={12} />
+            </button>
+            <button className="w-7 h-7 bg-white rounded-full shadow-md border border-zinc-100 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:scale-110 transition-transform">
+              <Mail size={12} />
+            </button>
+          </div>
+
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-50 to-white border border-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-900 shadow-sm">
+                  {candidate.firstName?.[0]}{candidate.lastName?.[0]}
+                </div>
+                {candidate.aiScore && (
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center ${candidate.aiScore > 70 ? 'bg-emerald-500' : 'bg-amber-500'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full bg-white animate-pulse`} />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-zinc-900 leading-none">
+                  {candidate.firstName} {candidate.lastName}
+                </h4>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="text-[10px] text-zinc-400 font-medium bg-zinc-50 px-1.5 py-0.5 rounded">
+                    {new Date(candidate.createdAt).toLocaleDateString('fr-CH', { day: 'numeric', month: 'short' })}
+                  </span>
+                  {coverageRatio && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isHealthy ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'}`}>
+                      x{coverageRatio}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {showPropertyContext && (
+            <div className="mt-3 pt-3 border-t border-zinc-50/50">
+              <PropertyThumbnail property={property} />
+            </div>
+          )}
+        </div>
       )}
+    </Draggable>
+  );
+};
+
+// --- PAGE PRINCIPALE ---
+
+const PipelinePageV2 = () => {
+  const navigate = useNavigate();
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('global'); 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeCandidate, setActiveCandidate] = useState(null);
+  
+  const COLUMNS = {
+    nouveaux: { id: 'nouveaux', title: 'Flux Entrant', subtitle: 'À traiter', statuses: ['NEW', 'TO_QUALIFY'], color: 'text-indigo-600' },
+    visites: { id: 'visites', title: 'Visites', subtitle: 'Agenda', statuses: ['VISIT_SCHEDULED', 'VISIT_DONE'], color: 'text-purple-600' },
+    dossier: { id: 'dossier', title: 'Analyse', subtitle: 'Dossiers complets', statuses: ['DOSSIER_INCOMPLETE', 'DOSSIER_PENDING', 'DOSSIER_READY'], color: 'text-amber-600' },
+    decision: { id: 'decision', title: 'Closing', subtitle: 'Décision finale', statuses: ['TRANSMITTED', 'UNDER_REVIEW', 'RETAINED'], color: 'text-emerald-600' },
+  };
+
+  const COLUMN_ORDER = ['nouveaux', 'visites', 'dossier', 'decision'];
+
+  const handleCardClick = (candidate) => {
+    setActiveCandidate(candidate);
+    setDrawerOpen(true);
+  };
+
+  // MOCK DATA GENERATOR
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setTimeout(() => {
+        const MOCK_DATA = [
+          { 
+            id: 'lead-valerie', firstName: 'Valérie', lastName: 'Dupuis', 
+            income: 8500, 
+            createdAt: new Date().toISOString(), 
+            aiScore: 0, 
+            isRisky: true, 
+            email: 'elodie.filet68@gmail.com',
+            phone: '+41 78 123 45 67',
+            jobType: 'N/A', 
+            employer: 'N/A',
+            civilStatus: 'SINGLE',
+            poursuitesStatus: 'ALERTE', 
+            aiReason: "Revenu déclaré mais dossier incomplet. Poursuites actives détectées dans le scan OCR.",
+            applications: [] 
+          },
+          { 
+            id: 'c-1', firstName: 'Thomas', lastName: 'Ruedi', income: 8500, createdAt: new Date().toISOString(), aiScore: 92, 
+            email: 't.ruedi@gmail.com', civilStatus: 'MARRIED', jobType: 'Fonctionnaire', employer: 'État de Genève', poursuitesStatus: 'CLEAN',
+            applications: [{ status: 'NEW', property: { id: 'p1', title: 'Attique Terrasse Lac', rent: 2800, image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=300' } }] 
+          },
+          { 
+            id: 'c-2', firstName: 'Sarah', lastName: 'Muller', income: 9200, createdAt: new Date().toISOString(), aiScore: 88, 
+            email: 's.muller@ubs.com', civilStatus: 'SINGLE', jobType: 'Analyste', employer: 'UBS', poursuitesStatus: 'CLEAN',
+            applications: [{ status: 'VISIT_SCHEDULED', property: { id: 'p1', title: 'Attique Terrasse Lac', rent: 2800, image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=300' } }] 
+          },
+        ];
+        setCandidates(MOCK_DATA);
+        setLoading(false);
+      }, 600);
+    };
+    loadData();
+  }, []);
+
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+    const newStatus = COLUMNS[result.destination.droppableId.split('::').pop()].statuses[0];
+    setCandidates(prev => prev.map(c => String(c.id) === result.draggableId ? { ...c, applications: [{...c.applications[0], status: newStatus}] } : c));
+    toast.success("Statut mis à jour");
+  };
+
+  const renderGlobalView = () => (
+    <div className="flex h-full overflow-x-auto pb-4 gap-4 px-4 md:px-8">
+      {COLUMN_ORDER.map(colId => {
+        const column = COLUMNS[colId];
+        const colCandidates = candidates.filter(c => {
+          const status = c.applications?.[0]?.status || 'NEW';
+          return column.statuses.includes(status);
+        });
+
+        return (
+          <div key={colId} className="flex-shrink-0 w-80 flex flex-col h-full">
+            <div className={`mb-3 flex items-center justify-between px-1`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-black uppercase tracking-widest ${column.color}`}>{column.title}</span>
+                <span className="bg-zinc-200/50 text-zinc-500 px-1.5 py-0.5 rounded text-[10px] font-bold">{colCandidates.length}</span>
+              </div>
+            </div>
+            <Droppable droppableId={`global::${colId}`}>
+              {(provided, snapshot) => (
+                <div ref={provided.innerRef} {...provided.droppableProps} className={`flex-1 rounded-xl transition-colors duration-200 -mx-2 px-2 ${snapshot.isDraggingOver ? 'bg-zinc-100/50' : ''}`}>
+                  {colCandidates.map((c, idx) => (
+                    <CandidateCard key={c.id} candidate={c} index={idx} showPropertyContext={true} onClick={handleCardClick} />
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderPropertyView = () => {
+    const groups = {};
+    candidates.forEach(c => {
+      const prop = c.applications?.[0]?.property;
+      const key = prop ? prop.id : 'orphans';
+      if (!groups[key]) groups[key] = { meta: prop || { title: 'Flux Entrant (Non assigné)', address: 'Email / Tel', rent: 0 }, candidates: [] };
+      groups[key].candidates.push(c);
+    });
+
+    return (
+      <div className="px-4 md:px-8 space-y-8 pb-12">
+        {Object.values(groups).map((group, gIdx) => (
+          <div key={gIdx} className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-zinc-50 bg-zinc-50/30 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                {group.meta.image ? (
+                  <img src={group.meta.image} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="bien" />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500"><AlertTriangle /></div>
+                )}
+                <div>
+                  <h3 className="font-bold text-zinc-900">{group.meta.title}</h3>
+                  <p className="text-xs text-zinc-500">{group.meta.address}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 divide-x divide-zinc-50">
+              {COLUMN_ORDER.map(colId => {
+                const colCandidates = group.candidates.filter(c => {
+                  const status = c.applications?.[0]?.status || 'NEW';
+                  return COLUMNS[colId].statuses.includes(status);
+                });
+                return (
+                  <Droppable key={colId} droppableId={`prop-${gIdx}::${colId}`}>
+                    {(provided, snapshot) => (
+                      <div ref={provided.innerRef} {...provided.droppableProps} className={`min-h-[150px] p-3 ${snapshot.isDraggingOver ? 'bg-indigo-50/30' : ''}`}>
+                        {colCandidates.map((c, idx) => (
+                          <CandidateCard key={c.id} candidate={c} index={idx} showPropertyContext={false} onClick={handleCardClick} />
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>;
+
+  return (
+    <div className="h-screen flex flex-col bg-[#F7F8FA] font-sans overflow-hidden">
+      <div className="h-16 px-4 md:px-8 bg-white/80 backdrop-blur-md border-b border-zinc-100 flex items-center justify-between shrink-0 z-20">
+        <div className="flex items-center gap-6">
+          <h1 className="text-xl font-bold text-zinc-900 tracking-tight">Pipeline</h1>
+          <div className="bg-zinc-100/80 p-1 rounded-lg flex gap-1">
+            <button onClick={() => setViewMode('global')} className={`px-3 py-1.5 rounded-md text-xs font-bold flex gap-2 transition-all ${viewMode === 'global' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}><List size={14}/> Flux</button>
+            <button onClick={() => setViewMode('property')} className={`px-3 py-1.5 rounded-md text-xs font-bold flex gap-2 transition-all ${viewMode === 'property' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}><LayoutGrid size={14}/> Biens</button>
+          </div>
+        </div>
+        <button className="bg-zinc-900 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg shadow-zinc-900/10 hover:bg-zinc-800 transition-transform active:scale-95">+ Nouveau</button>
+      </div>
+
+      <div className="flex-1 overflow-x-auto overflow-y-hidden pt-6">
+        <DragDropContext onDragEnd={onDragEnd}>
+          {viewMode === 'global' ? renderGlobalView() : <div className="h-full overflow-y-auto">{renderPropertyView()}</div>}
+        </DragDropContext>
+      </div>
+
+      <PipelineDrawer 
+        candidate={activeCandidate} 
+        isOpen={drawerOpen} 
+        onClose={() => setDrawerOpen(false)} 
+      />
     </div>
   );
 };
