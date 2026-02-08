@@ -52,7 +52,71 @@ const PipelineDrawer = ({ candidate, isOpen, onClose }) => {
   const rent = prop?.rent || 0;
   const effortRate = income > 0 && rent > 0 ? ((rent / income) * 100).toFixed(0) : 0;
   const solvencyScore = candidate.aiScore || 0;
-  const isRisky = solvencyScore < 50;
+
+  // DEBUG: Afficher les données reçues dans le drawer
+  console.log('🔍 DRAWER - Données:', {
+    nom: `${candidate.firstName} ${candidate.lastName}`,
+    poursuitesStatus: candidate.poursuitesStatus,
+    aiScore: solvencyScore,
+    income: income,
+    rent: rent,
+    effortRate: effortRate,
+    aiReason: candidate.aiReason
+  });
+
+  // Vérifier si poursuites (MAJOR_ISSUES ou MINOR_ISSUES)
+  const hasPursuits = candidate.poursuitesStatus && 
+                      (candidate.poursuitesStatus === 'MAJOR_ISSUES' || 
+                       candidate.poursuitesStatus === 'MINOR_ISSUES');
+  
+  const isRisky = solvencyScore < 50 || effortRate > 35 || hasPursuits;
+
+  // Analyse intelligente du risque (Orientée SIGNAUX, sans chiffres bruts)
+  const getRiskSignals = () => {
+    const signals = [];
+    
+    // 1. Signal Financier (Capacité) - EN PREMIER
+    if (effortRate > 100) {
+      signals.push({ label: "Incapacité Financière Critique", severity: 'CRITICAL', icon: <Ban size={14} /> });
+    } else if (effortRate > 35) {
+      signals.push({ label: "Surcharge Financière", severity: 'WARNING', icon: <AlertTriangle size={14} /> });
+    }
+    
+    // 2. Signal Administratif (Poursuites) - AU MILIEU
+    if (hasPursuits) {
+      signals.push({ label: "Poursuites Actives", severity: 'CRITICAL', icon: <ShieldCheck size={14} /> });
+    }
+    
+    // 3. Signal Score (IA) - EN DERNIER
+    if (solvencyScore > 0 && solvencyScore < 50) {
+      signals.push({ label: "Profil Fragile", severity: 'WARNING', icon: <TrendingUp size={14} /> });
+    }
+    
+    // 4. Signal Complétude (seulement si RIEN d'autre détecté et score = 0)
+    if (solvencyScore === 0 && !hasPursuits && effortRate <= 35) {
+      signals.push({ label: "Analyse Incomplète", severity: 'NEUTRAL', icon: <FileText size={14} /> });
+    }
+    
+    // Si aucun signal négatif majeur
+    if (signals.length === 0 && solvencyScore >= 50) {
+      signals.push({ label: "Dossier Solide", severity: 'SUCCESS', icon: <CheckCircle2 size={14} /> });
+    }
+    
+    return signals;
+  };
+
+  // Déterminer le verdict final (Simplifié pour le Micro-HUD)
+  const getVerdict = () => {
+    // DÉFAVORABLE : Poursuites majeures OU incapacité financière OU score très bas
+    if (candidate.poursuitesStatus === 'MAJOR_ISSUES' || effortRate > 100 || solvencyScore < 30) {
+      return { label: 'DÉFAVORABLE', color: 'text-rose-600 bg-rose-50 border-rose-100', icon: <Ban size={12} /> };
+    }
+    // VIGILANCE : Poursuites mineures OU taux élevé OU score moyen
+    if (candidate.poursuitesStatus === 'MINOR_ISSUES' || effortRate > 35 || (solvencyScore > 0 && solvencyScore < 50)) {
+      return { label: 'VIGILANCE', color: 'text-amber-600 bg-amber-50 border-amber-100', icon: <AlertTriangle size={12} /> };
+    }
+    return { label: 'FAVORABLE', color: 'text-emerald-600 bg-emerald-50 border-emerald-100', icon: <CheckCircle2 size={12} /> };
+  };
 
   // Mock Smart Re-Match (Opportunité Cross-Selling)
   // Si le candidat a un bon revenu mais n'est pas sur ce bien, on propose un autre bien
@@ -325,14 +389,73 @@ const PipelineDrawer = ({ candidate, isOpen, onClose }) => {
                     </div>
                   </section>
 
-                  {/* Analyse IA */}
+                  {/* ANALYSE IA - MICRO-HUD (Site Online Version) */}
                   <section>
-                    <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">
-                      <AlertTriangle size={14} />
-                      Analyse de Risque
-                    </h3>
-                    <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-100 text-sm text-zinc-600 leading-relaxed italic">
-                      "{candidate.aiReason || "Dossier standard. Aucun risque majeur détecté, mais vérifier les références employeur."}"
+                    <div className="bg-white border border-zinc-200/60 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-zinc-50 border border-zinc-100 shadow-sm">
+                            <Sparkles size={18} className="text-indigo-500" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black uppercase tracking-[0.1em] text-zinc-400 leading-none mb-1">SolvencyScore™</span>
+                            <span className="text-sm font-bold text-zinc-900">Analyse de Risque</span>
+                          </div>
+                        </div>
+                        
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black tracking-wide shadow-sm ${getVerdict().color}`}>
+                          {getVerdict().icon}
+                          {getVerdict().label}
+                        </div>
+                      </div>
+
+                      {/* SIGNAUX IA (Bento Style) */}
+                      <div className="flex gap-2.5 mb-5">
+                        {getRiskSignals().map((signal, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`
+                              flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all whitespace-nowrap
+                              ${signal.severity === 'CRITICAL' ? 'bg-rose-50 text-rose-600 border-rose-100' : 
+                                signal.severity === 'WARNING' ? 'bg-amber-50 text-amber-600 border-amber-100' : 
+                                signal.severity === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                                'bg-zinc-50 text-zinc-500 border-zinc-200'}
+                            `}
+                          >
+                            <span className="opacity-80">{signal.icon}</span>
+                            {signal.label}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* VERDICT SEMANTIQUE */}
+                      <div className="relative pl-4 border-l-2 border-zinc-100 py-1 mb-6">
+                        <p className="text-[13px] text-zinc-500 leading-relaxed font-medium italic">
+                          "{candidate.aiReason || "Dossier en cours d'analyse."}"
+                        </p>
+                      </div>
+
+                      {/* ACTION RECOMMANDÉE - Redesign Bouton Rouge Vif (Image 2) */}
+                      <div className="pt-4 border-t border-zinc-50 flex items-center justify-between">
+                         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Action Recommandée</span>
+                         <button 
+                            className={`
+                              flex items-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black text-white transition-all transform active:scale-95 shadow-md
+                              ${getVerdict().label === 'DÉFAVORABLE' ? 'bg-[#E11D48] hover:bg-[#BE123C] shadow-rose-200' : 
+                                getVerdict().label === 'VIGILANCE' ? 'bg-[#D97706] hover:bg-[#B45309] shadow-amber-200' : 
+                                'bg-zinc-900 hover:bg-black shadow-zinc-200'}
+                            `}
+                         >
+                            {getVerdict().label === 'DÉFAVORABLE' ? <Ban size={14} strokeWidth={3} /> : 
+                             getVerdict().label === 'VIGILANCE' ? <User size={14} strokeWidth={3} /> : 
+                             <CheckCircle2 size={14} strokeWidth={3} />}
+                            
+                            {getVerdict().label === 'DÉFAVORABLE' ? 'Rejet immédiat' : 
+                             getVerdict().label === 'VIGILANCE' ? 'Demander Garant' : 
+                             'Procéder au bail'}
+                            <ChevronRight size={14} strokeWidth={3} className="opacity-70 ml-1" />
+                         </button>
+                      </div>
                     </div>
                   </section>
                 </>
@@ -633,42 +756,72 @@ const PipelinePageV2 = () => {
     setDrawerOpen(true);
   };
 
-  // MOCK DATA GENERATOR
+  // CHARGEMENT DES DONNÉES RÉELLES DEPUIS L'API
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
-      setTimeout(() => {
-        const MOCK_DATA = [
-          { 
-            id: 'lead-valerie', firstName: 'Valérie', lastName: 'Dupuis', 
-            income: 8500, 
-            createdAt: new Date().toISOString(), 
-            aiScore: 0, 
-            isRisky: true, 
-            email: 'elodie.filet68@gmail.com',
-            phone: '+41 78 123 45 67',
-            jobType: 'N/A', 
-            employer: 'N/A',
-            civilStatus: 'SINGLE',
-            poursuitesStatus: 'ALERTE', 
-            aiReason: "Revenu déclaré mais dossier incomplet. Poursuites actives détectées dans le scan OCR.",
-            applications: [] 
-          },
-          { 
-            id: 'c-1', firstName: 'Thomas', lastName: 'Ruedi', income: 8500, createdAt: new Date().toISOString(), aiScore: 92, 
-            email: 't.ruedi@gmail.com', civilStatus: 'MARRIED', jobType: 'Fonctionnaire', employer: 'État de Genève', poursuitesStatus: 'CLEAN',
-            applications: [{ status: 'NEW', property: { id: 'p1', title: 'Attique Terrasse Lac', rent: 2800, image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=300' } }] 
-          },
-          { 
-            id: 'c-2', firstName: 'Sarah', lastName: 'Muller', income: 9200, createdAt: new Date().toISOString(), aiScore: 88, 
-            email: 's.muller@ubs.com', civilStatus: 'SINGLE', jobType: 'Analyste', employer: 'UBS', poursuitesStatus: 'CLEAN',
-            applications: [{ status: 'VISIT_SCHEDULED', property: { id: 'p1', title: 'Attique Terrasse Lac', rent: 2800, image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=300' } }] 
-          },
-        ];
-        setCandidates(MOCK_DATA);
+      try {
+        setLoading(true);
+        console.log('🔄 Chargement des candidats depuis l\'API...');
+        
+        const response = await fetch(`${API_URL}/api/candidates`);
+        
+        if (!response.ok) {
+          throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('📥 Réponse API:', result);
+        
+        if (result.success && result.data) {
+          // Mapper les données API vers le format attendu par le Pipeline
+          const mappedCandidates = result.data.map(candidate => {
+            const latestProfile = candidate.solvencyProfiles?.[0];
+            const latestApplication = candidate.applications?.[0];
+            
+            return {
+              id: candidate.id,
+              firstName: candidate.firstName,
+              lastName: candidate.lastName,
+              email: candidate.email,
+              phone: candidate.phone || 'N/A',
+              income: candidate.monthlyIncome || 0,
+              createdAt: candidate.createdAt,
+              aiScore: latestProfile?.solvencyScore || 0,
+              isRisky: (latestProfile?.solvencyScore || 0) < 50,
+              jobType: latestProfile?.occupation || 'N/A',
+              employer: latestProfile?.employerName || 'N/A',
+              civilStatus: candidate.applicantType || 'SINGLE',
+              poursuitesStatus: latestProfile?.pursuitsStatus || 'NOT_CHECKED',
+              aiReason: latestProfile?.scoreJustification || "Dossier en cours d'analyse.",
+              applications: candidate.applications?.map(app => ({
+                id: app.id,
+                status: app.status,
+                property: app.property ? {
+                  id: app.property.id,
+                  title: app.property.address || app.property.name || 'Bien immobilier',
+                  rent: app.property.monthlyRent || 0,
+                  address: `${app.property.address}, ${app.property.postalCode} ${app.property.city}`,
+                  image: app.property.imageUrl || null
+                } : null
+              })) || []
+            };
+          });
+          
+          console.log(`✅ ${mappedCandidates.length} candidats chargés`);
+          setCandidates(mappedCandidates);
+        } else {
+          console.warn('⚠️ Aucun candidat trouvé dans la réponse API');
+          setCandidates([]);
+        }
+      } catch (error) {
+        console.error('❌ Erreur de chargement des candidats:', error);
+        toast.error('Impossible de charger les candidats');
+        setCandidates([]);
+      } finally {
         setLoading(false);
-      }, 600);
+      }
     };
+    
     loadData();
   }, []);
 
