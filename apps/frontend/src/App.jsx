@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/layout/Layout';
 import DashboardPage from './pages/DashboardPage';
 import InboxPage from './pages/InboxPage';
-import PipelinePage from './pages/PipelinePage';
+import PipelinePageV2 from './pages/PipelinePageV2';
 import ContactsPage from './pages/ContactsPage';
 import CandidateDetailPage from './pages/CandidateDetailPage';
 import LoginPage from './pages/LoginPage';
@@ -79,7 +79,7 @@ function AppContent() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/pipeline" element={<PipelinePageV2 />} />
             <Route path="/candidates/:id" element={<CandidateDetailPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
