@@ -756,73 +756,89 @@ const PipelinePageV2 = () => {
     setDrawerOpen(true);
   };
 
-  // CHARGEMENT DES DONNÉES RÉELLES DEPUIS L'API
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        console.log('🔄 Chargement des candidats depuis l\'API...');
-        
-        const response = await fetch(`${API_URL}/api/candidates`);
-        
-        if (!response.ok) {
-          throw new Error(`Erreur HTTP: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        console.log('📥 Réponse API:', result);
-        
-        if (result.success && result.data) {
-          // Mapper les données API vers le format attendu par le Pipeline
-          const mappedCandidates = result.data.map(candidate => {
-            const latestProfile = candidate.solvencyProfiles?.[0];
-            const latestApplication = candidate.applications?.[0];
-            
-            return {
-              id: candidate.id,
-              firstName: candidate.firstName,
-              lastName: candidate.lastName,
-              email: candidate.email,
-              phone: candidate.phone || 'N/A',
-              income: candidate.monthlyIncome || 0,
-              createdAt: candidate.createdAt,
-              aiScore: latestProfile?.solvencyScore || 0,
-              isRisky: (latestProfile?.solvencyScore || 0) < 50,
-              jobType: latestProfile?.occupation || 'N/A',
-              employer: latestProfile?.employerName || 'N/A',
-              civilStatus: candidate.applicantType || 'SINGLE',
-              poursuitesStatus: latestProfile?.pursuitsStatus || 'NOT_CHECKED',
-              aiReason: latestProfile?.scoreJustification || "Dossier en cours d'analyse.",
-              applications: candidate.applications?.map(app => ({
-                id: app.id,
-                status: app.status,
-                property: app.property ? {
-                  id: app.property.id,
-                  title: app.property.address || app.property.name || 'Bien immobilier',
-                  rent: app.property.monthlyRent || 0,
-                  address: `${app.property.address}, ${app.property.postalCode} ${app.property.city}`,
-                  image: app.property.imageUrl || null
-                } : null
-              })) || []
-            };
-          });
-          
-          console.log(`✅ ${mappedCandidates.length} candidats chargés`);
-          setCandidates(mappedCandidates);
-        } else {
-          console.warn('⚠️ Aucun candidat trouvé dans la réponse API');
-          setCandidates([]);
-        }
-      } catch (error) {
-        console.error('❌ Erreur de chargement des candidats:', error);
-        toast.error('Impossible de charger les candidats');
-        setCandidates([]);
-      } finally {
-        setLoading(false);
+  // Fonction de chargement des candidats (réutilisable)
+  const loadCandidates = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Chargement des candidats depuis l\'API...');
+      
+      const response = await fetch(`${API_URL}/api/candidates`);
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
       }
+      
+      const result = await response.json();
+      console.log('📥 Réponse API:', result);
+      
+      if (result.success && result.data) {
+        // Mapper les données API vers le format attendu par le Pipeline
+        const mappedCandidates = result.data.map(candidate => {
+          const latestProfile = candidate.solvencyProfiles?.[0];
+          const latestApplication = candidate.applications?.[0];
+          
+          return {
+            id: candidate.id,
+            firstName: candidate.firstName,
+            lastName: candidate.lastName,
+            email: candidate.email,
+            phone: candidate.phone || 'N/A',
+            income: candidate.monthlyIncome || 0,
+            createdAt: candidate.createdAt,
+            aiScore: latestProfile?.solvencyScore || 0,
+            isRisky: (latestProfile?.solvencyScore || 0) < 50,
+            jobType: latestProfile?.occupation || 'N/A',
+            employer: latestProfile?.employerName || 'N/A',
+            civilStatus: candidate.applicantType || 'SINGLE',
+            poursuitesStatus: latestProfile?.pursuitsStatus || 'NOT_CHECKED',
+            aiReason: latestProfile?.scoreJustification || "Dossier en cours d'analyse.",
+            applications: candidate.applications?.map(app => ({
+              id: app.id,
+              status: app.status,
+              property: app.property ? {
+                id: app.property.id,
+                title: app.property.address || app.property.name || 'Bien immobilier',
+                rent: app.property.monthlyRent || 0,
+                address: `${app.property.address}, ${app.property.postalCode} ${app.property.city}`,
+                image: app.property.imageUrl || null
+              } : null
+            })) || []
+          };
+        });
+        
+        console.log(`✅ ${mappedCandidates.length} candidats chargés`);
+        setCandidates(mappedCandidates);
+      } else {
+        console.warn('⚠️ Aucun candidat trouvé dans la réponse API');
+        setCandidates([]);
+      }
+    } catch (error) {
+      console.error('❌ Erreur de chargement des candidats:', error);
+      toast.error('Impossible de charger les candidats');
+      setCandidates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // CHARGEMENT INITIAL
+  useEffect(() => {
+    loadCandidates();
+  }, []);
+
+  // ÉCOUTE DE L'ÉVÉNEMENT "candidateAdded" (depuis l'Inbox)
+  useEffect(() => {
+    const handleCandidateAdded = (event) => {
+      console.log('🎉 Nouveau candidat détecté depuis l\'Inbox:', event.detail);
+      toast.info('🔄 Mise à jour du Pipeline...');
+      loadCandidates(); // Recharger la liste
     };
+
+    window.addEventListener('candidateAdded', handleCandidateAdded);
     
-    loadData();
+    return () => {
+      window.removeEventListener('candidateAdded', handleCandidateAdded);
+    };
   }, []);
 
   const onDragEnd = (result) => {
